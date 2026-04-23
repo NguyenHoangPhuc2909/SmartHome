@@ -1,0 +1,9 @@
+flask
+flask-sqlalchemy
+flask-dance
+flask-apscheduler
+opencv-python
+numpy
+python-dotenv
+pymysql
+ 
