@@ -1,9 +1,9 @@
+import os
+import datetime
 from flask import Blueprint, request, jsonify
 from models import db, Device, DeviceLog
-import datetime
 
 device_bp = Blueprint("device", __name__)
-
 
 # ── Lấy danh sách thiết bị ─────────────────────────────────────────────────
 @device_bp.route("/", methods=["GET"])
@@ -18,7 +18,7 @@ def get_devices():
     } for d in devices])
 
 
-# ── Lấy trạng thái hiện tại của tất cả thiết bị ───────────────────────────
+# ── LUỒNG 2: ESP32 HỎI TRẠNG THÁI (GET /status) ───────────────────────────
 @device_bp.route("/status", methods=["GET"])
 def get_status():
     devices = Device.query.all()
@@ -26,18 +26,20 @@ def get_status():
     for d in devices:
         last_log = DeviceLog.query.filter_by(device_id=d.id)\
                    .order_by(DeviceLog.timestamp.desc()).first()
+        
+        # Trả về mảng JSON đúng chuẩn ESP32 cần đọc
         result.append({
             "id":     d.id,
             "name":   d.name,
             "type":   d.type,
             "room":   d.room,
             "status": last_log.status if last_log else 0,
-            "mode":   last_log.mode   if last_log else "Manual",
+            "mode":   last_log.mode   if last_log else "AI",
         })
     return jsonify(result)
 
 
-# ── Nhận dữ liệu cảm biến từ ESP32 + ghi log ──────────────────────────────
+# ── LUỒNG 1: ESP32 GỬI CẢM BIẾN LÊN (POST /sensor) ────────────────────────
 @device_bp.route("/sensor", methods=["POST"])
 def update_sensor():
     data = request.json
@@ -47,16 +49,28 @@ def update_sensor():
         light = float(data.get("light", 0))
         gas   = float(data.get("gas",   0))
 
+        now = datetime.datetime.now()
+        
         # AI predict
         from services.ai import predict_behavior
-        now = datetime.datetime.now()
-        predictions = predict_behavior(temp, humi, light, now.hour, now.month)
+        predictions = predict_behavior(temp, humi, light, now)
 
-        # Ghi log cho từng thiết bị AI điều khiển
-        for device_id, status in predictions.items():
+        # Ghi log cho từng thiết bị
+        for device_id, predicted_status in predictions.items():
+            last_log = DeviceLog.query.filter_by(device_id=device_id)\
+                        .order_by(DeviceLog.timestamp.desc()).first()
+            
+            # Nếu người dùng đang chỉnh tay trên Web, AI không được phép can thiệp
+            if last_log and last_log.mode == "Manual":
+                continue 
+                
+            # Chỉ ghi log mới nếu AI thay đổi trạng thái (tối ưu DB)
+            if last_log and last_log.status == predicted_status and last_log.mode == "AI":
+                continue
+
             log = DeviceLog(
                 device_id = device_id,
-                status    = status,
+                status    = predicted_status,
                 mode      = "AI",
                 temp      = temp,
                 humi      = humi,
@@ -64,18 +78,21 @@ def update_sensor():
                 gas       = gas,
             )
             db.session.add(log)
+            
         db.session.commit()
-
         return jsonify({"status": "ok", "predictions": predictions})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# ── Bật tắt thủ công từ UI ─────────────────────────────────────────────────
+# ── LUỒNG 3: WEB UI ĐIỀU KHIỂN (POST /<id>/control) ───────────────────────
 @device_bp.route("/<int:device_id>/control", methods=["POST"])
 def control_device(device_id):
     data   = request.json
-    status = data.get("status")   # 0 | 1
+    status = data.get("status")
+    mode   = data.get("mode", "Manual") 
+    
+    # Giao diện React PHẢI gửi kèm cảm biến hiện tại lúc bấm nút để DB không bị NULL
     temp   = data.get("temp")
     humi   = data.get("humi")
     light  = data.get("light")
@@ -87,18 +104,18 @@ def control_device(device_id):
     log = DeviceLog(
         device_id = device_id,
         status    = status,
-        mode      = "Manual",
-        temp      = temp,
-        humi      = humi,
-        light     = light,
-        gas       = gas,
+        mode      = mode, 
+        temp      = float(temp) if temp is not None else 0,
+        humi      = float(humi) if humi is not None else 0,
+        light     = float(light) if light is not None else 0,
+        gas       = float(gas) if gas is not None else 0,
     )
     db.session.add(log)
     db.session.commit()
-    return jsonify({"status": "ok"})
+    return jsonify({"status": "ok", "mode": mode, "device_status": status})
 
 
-# ── Lấy lịch sử log của thiết bị ──────────────────────────────────────────
+# ── API khác: Lịch sử, Upload AI ──────────────────────────────────────────
 @device_bp.route("/<int:device_id>/logs", methods=["GET"])
 def get_logs(device_id):
     limit = request.args.get("limit", 50, type=int)
@@ -114,3 +131,25 @@ def get_logs(device_id):
         "gas":       l.gas,
         "timestamp": l.timestamp.isoformat(),
     } for l in logs])
+
+@device_bp.route("/train", methods=["POST"])
+def handle_train_model():
+    if 'file' not in request.files:
+        return jsonify({"error": "Không tìm thấy file"}), 400
+        
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "Chưa có file được chọn"}), 400
+
+    if file and (file.filename.endswith('.csv') or file.filename.endswith('.xlsx')):
+        temp_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', file.filename)
+        file.save(temp_path)
+        try:
+            from services.ai import train_and_save_model
+            train_and_save_model(temp_path)
+            if os.path.exists(temp_path): os.remove(temp_path)
+            return jsonify({"message": "Huấn luyện mô hình thành công!"}), 200
+        except Exception as e:
+            if os.path.exists(temp_path): os.remove(temp_path)
+            return jsonify({"error": f"Lỗi trong quá trình train: {str(e)}"}), 500
+    return jsonify({"error": "Định dạng file không hỗ trợ"}), 400
