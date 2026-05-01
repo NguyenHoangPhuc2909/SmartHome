@@ -6,4 +6,6 @@ opencv-python
 numpy
 python-dotenv
 pymysql
- 
+pandas
+openpyxl
+scikit-learn

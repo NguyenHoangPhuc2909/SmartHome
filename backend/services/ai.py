@@ -4,11 +4,14 @@ import numpy as np
 import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.model_selection import train_test_split
 from models import Device
 
-# Định nghĩa chính xác class đã dùng khi train để có thể load model
-class LogisticRegression(object):
-    def __init__(self, eta=0.01, n_iter=50, class_weight=None):
+# ══════════════════════════════════════════════════════════════════════════════
+# CLASS LOGISTIC REGRESSION TỰ VIẾT (DÙNG NHẤT QUÁN - KHÔNG IMPORT SKLEARN LR)
+# ══════════════════════════════════════════════════════════════════════════════
+class LogisticRegression:
+    def __init__(self, eta=0.01, n_iter=1000, class_weight=None):
         self.eta = eta
         self.n_iter = n_iter
         self.class_weight = class_weight
@@ -43,7 +46,7 @@ class LogisticRegression(object):
         return loss.mean()
 
     def _sigmoid(self, z):
-        return 1.0 / (1.0 + np.exp(-z))
+        return 1.0 / (1.0 + np.exp(-np.clip(z, -500, 500)))  # clip tránh overflow
 
     def net_input(self, X):
         return np.dot(X, self.w_[1:]) + self.w_[0]
@@ -57,35 +60,72 @@ class LogisticRegression(object):
     def predict(self, X):
         return np.where(self.net_input(X) >= 0.0, 1, 0)
 
+    def score(self, X, y):
+        """Tính accuracy để tương thích với sklearn API."""
+        preds = self.predict(X)
+        return np.mean(preds == y)
 
-# Cấu hình đường dẫn lưu model
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_DIR = os.path.join(BASE_DIR, 'trained_models')
-MODEL_PATH = os.path.join(MODEL_DIR, 'logistic_regression_model.pkl')
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CẤU HÌNH ĐƯỜNG DẪN MODEL
+# ══════════════════════════════════════════════════════════════════════════════
+BASE_DIR       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+MODEL_DIR      = os.path.join(BASE_DIR, 'trained_models')
+MODEL_PATH     = os.path.join(MODEL_DIR, 'logistic_regression_model.pkl')
 PREPROCESSOR_PATH = os.path.join(MODEL_DIR, 'preprocessor.pkl')
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HÀM TRAIN VÀ LƯU MODEL
+# ══════════════════════════════════════════════════════════════════════════════
 def train_and_save_model(dataset_path):
     """
-    Đọc dữ liệu, tiền xử lý, huấn luyện và lưu model.
+    Đọc dữ liệu, tiền xử lý, huấn luyện LogisticRegression tự viết và lưu lại.
+    Trả về dict {tên_thiết_bị: accuracy%} để hiển thị trên web.
     """
+
+    # 1. ĐỌC FILE ─────────────────────────────────────────────────────────────
     if dataset_path.endswith('.xlsx'):
-        df = pd.read_excel(dataset_path, sheet_name='📊 Dữ liệu thô')
+        xls = pd.ExcelFile(dataset_path)
+        target_sheet = None
+        for sheet in xls.sheet_names:
+            if sheet.lower().strip() == "dữ liệu thô":
+                target_sheet = sheet
+                break
+        if target_sheet is None:
+            raise ValueError(
+                f"Không tìm thấy sheet 'Dữ liệu thô'. Các sheet hiện có: {xls.sheet_names}"
+            )
+        df = pd.read_excel(dataset_path, sheet_name=target_sheet)
     else:
         df = pd.read_csv(dataset_path)
 
-    # Chuyển đổi và trích xuất đặc trưng thời gian
+    # 2. TRÍCH XUẤT ĐẶC TRƯNG THỜI GIAN ───────────────────────────────────────
     df['Ngày'] = pd.to_datetime(df['Ngày'])
     df['day_of_week_num'] = df['Ngày'].dt.dayofweek
-    df['day_of_month'] = df['Ngày'].dt.day
+    df['day_of_month']    = df['Ngày'].dt.day
 
-    numerical_cols = ['Giờ', 'Phút', 'Nhiệt độ (°C)', 'Độ ẩm (%)', 'Ánh sáng (lux)', 'day_of_week_num', 'day_of_month', 'Tháng']
+    numerical_cols   = ['Giờ', 'Phút', 'Nhiệt độ (°C)', 'Độ ẩm (%)',
+                        'Ánh sáng (lux)', 'day_of_week_num', 'day_of_month', 'Tháng']
     categorical_cols = ['Device_ID', 'Tên thiết bị', 'Phòng']
     all_feature_cols = numerical_cols + categorical_cols
 
-    X = df[all_feature_cols]
-    y = df['Trạng thái'].values
+    # Xóa dòng rỗng
+    df = df.dropna(subset=all_feature_cols + ['Trạng thái'])
 
-    # Pipeline tiền xử lý
+    if len(df) < 20:
+        raise ValueError("Dataset quá ít dòng (< 20). Hãy thu thập thêm dữ liệu.")
+
+    X = df[all_feature_cols]
+    y = df['Trạng thái'].values.astype(int)
+
+    # 3. CHIA TRAIN / TEST ─────────────────────────────────────────────────────
+    # stratify=y: giữ tỷ lệ BẬT/TẮT đồng đều giữa train và test (giống Colab)
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    # 4. PIPELINE TIỀN XỬ LÝ ──────────────────────────────────────────────────
     preprocessor = ColumnTransformer(
         transformers=[
             ('cat', OneHotEncoder(handle_unknown='ignore', sparse_output=False), categorical_cols),
@@ -94,31 +134,54 @@ def train_and_save_model(dataset_path):
         remainder='drop'
     )
 
-    X_proc = preprocessor.fit_transform(X)
+    X_train_proc = preprocessor.fit_transform(X_train)
+    X_test_proc  = preprocessor.transform(X_test)
 
-    # Huấn luyện model dùng class tự xây dựng
-    logistR = LogisticRegression(n_iter=5000, eta=0.001, class_weight='balanced')
-    logistR.fit(X_proc, y)
+    # 5. HUẤN LUYỆN MODEL TỰ VIẾT ─────────────────────────────────────────────
+    model = LogisticRegression(eta=0.001, n_iter=5000, class_weight='balanced')
+    model.fit(X_train_proc, y_train)
 
-    # Lưu model và bộ tiền xử lý
+    # 6. TÍNH ACCURACY ────────────────────────────────────────────────────────
+    results = {}
+
+    overall_acc = model.score(X_test_proc, y_test)
+    results["Toàn bộ hệ thống"] = round(overall_acc * 100, 2)
+
+    # Accuracy riêng từng thiết bị (theo Device_ID trong X_test)
+    X_test_reset = X_test.reset_index(drop=True)
+    for device_id in df['Device_ID'].unique():
+        mask = (X_test_reset['Device_ID'] == device_id).values
+        if mask.sum() > 0:
+            acc = model.score(X_test_proc[mask], y_test[mask])
+            # Lấy tên thiết bị để hiển thị thân thiện hơn
+            device_name = df.loc[df['Device_ID'] == device_id, 'Tên thiết bị'].iloc[0]
+            results[f"{device_name} (ID {device_id})"] = round(acc * 100, 2)
+
+    # 7. LƯU MODEL & PREPROCESSOR ─────────────────────────────────────────────
     os.makedirs(MODEL_DIR, exist_ok=True)
+
     with open(MODEL_PATH, 'wb') as f:
-        pickle.dump(logistR, f)
+        pickle.dump(model, f)
     with open(PREPROCESSOR_PATH, 'wb') as f:
         pickle.dump(preprocessor, f)
 
-    return True
+    print(f"✅ Đã lưu model tại: {MODEL_PATH}")
+    return results
 
+
+# ══════════════════════════════════════════════════════════════════════════════
+# HÀM DỰ ĐOÁN
+# ══════════════════════════════════════════════════════════════════════════════
 def predict_behavior(temp, humi, light, current_datetime):
     """
-    Dự đoán trạng thái bật/tắt cho toàn bộ thiết bị qua model dùng chung.
-    Sử dụng current_datetime (datetime object) thay vì nhập tay giờ/tháng.
+    Dự đoán trạng thái bật/tắt cho toàn bộ thiết bị (light, fan).
+    Trả về dict {device_id: 0 hoặc 1}.
     """
     predictions = {}
     devices = Device.query.filter(Device.type.in_(["light", "fan"])).all()
 
     if not os.path.exists(MODEL_PATH) or not os.path.exists(PREPROCESSOR_PATH):
-        print("Model chưa được huấn luyện!")
+        print("⚠️  Model chưa được huấn luyện! Hãy upload dataset và train trước.")
         return predictions
 
     # Load model & preprocessor
@@ -128,36 +191,38 @@ def predict_behavior(temp, humi, light, current_datetime):
         model = pickle.load(f)
 
     # Trích xuất thời gian
-    hour = current_datetime.hour
-    minute = current_datetime.minute
+    hour            = current_datetime.hour
+    minute          = current_datetime.minute
     day_of_week_num = current_datetime.weekday()
-    day_of_month = current_datetime.day
-    month = current_datetime.month
+    day_of_month    = current_datetime.day
+    month           = current_datetime.month
 
     for device in devices:
-        # Xây dựng vector đặc trưng cho từng thiết bị
         device_name = 'Quạt' if device.type == 'fan' else 'Đèn'
-        
-        # Nếu database của bạn có lưu phòng (room), bạn có thể gán room_name = device.room
-        # Ở đây tôi mặc định là 'Phòng khách' cho Quạt và 'Phòng ngủ' cho đèn dựa theo data mẫu
-        room_name = 'Phòng khách' if device.type == 'fan' else 'Phòng ngủ'
-        
+
+        # FIX: Dùng device.room từ DB thay vì hardcode
+        room_name = device.room if device.room else 'Phòng khách'
+
         df_input = pd.DataFrame([{
-            'Giờ': hour,
-            'Phút': minute,
-            'Nhiệt độ (°C)': temp,
-            'Độ ẩm (%)': humi,
-            'Ánh sáng (lux)': light,
+            'Giờ':             hour,
+            'Phút':            minute,
+            'Nhiệt độ (°C)':   temp,
+            'Độ ẩm (%)':       humi,
+            'Ánh sáng (lux)':  light,
             'day_of_week_num': day_of_week_num,
-            'day_of_month': day_of_month,
-            'Tháng': month,
-            'Device_ID': device.id,
-            'Tên thiết bị': device_name,
-            'Phòng': room_name
+            'day_of_month':    day_of_month,
+            'Tháng':           month,
+            'Device_ID':       device.id,
+            'Tên thiết bị':    device_name,
+            'Phòng':           room_name,
         }])
 
-        X_proc = preprocessor.transform(df_input)
-        pred = model.predict(X_proc)[0]
-        predictions[device.id] = int(pred)
+        try:
+            X_proc = preprocessor.transform(df_input)
+            pred   = model.predict(X_proc)[0]
+            predictions[device.id] = int(pred)
+        except Exception as e:
+            print(f"⚠️  Lỗi dự đoán thiết bị {device.id}: {e}")
+            predictions[device.id] = 0  # fallback tắt
 
     return predictions
