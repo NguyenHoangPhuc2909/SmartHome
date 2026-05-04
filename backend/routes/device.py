@@ -44,10 +44,54 @@ def get_status():
             "name":   d.name,
             "type":   d.type,
             "room":   d.room,
+            "sensor_type": d.sensor_type,
             "status": last_log.status if last_log else 0,
             "mode":   last_log.mode   if last_log else "AI",
+            "temp":   last_log.temp   if last_log else None,
+            "humi":   last_log.humi   if last_log else None,
+            "light":  last_log.light  if last_log else None,
+            "gas":    last_log.gas    if last_log else None,
         })
     return jsonify(result)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POST /reset-to-ai  — Reset tất cả thiết bị về AI mode
+# ══════════════════════════════════════════════════════════════════════════════
+@device_bp.route("/reset-to-ai", methods=["POST"])
+def reset_to_ai():
+    """
+    Khi người dùng bật AI Mode trên Web, gọi API này để:
+    - Ghi log mới với mode='AI' cho toàn bộ thiết bị đang ở mode='Manual'
+    - Từ đó AI sẽ tiếp tục kiểm soát tất cả thiết bị
+    """
+    try:
+        devices = Device.query.filter(Device.type.in_(["light", "fan"])).all()
+        count = 0
+        for d in devices:
+            last_log = (
+                DeviceLog.query
+                .filter_by(device_id=d.id)
+                .order_by(DeviceLog.timestamp.desc())
+                .first()
+            )
+            # Chỉ reset những thiết bị đang bị kẹt ở Manual
+            if last_log and last_log.mode == "Manual":
+                db.session.add(DeviceLog(
+                    device_id=d.id,
+                    status=last_log.status,   # Giữ nguyên trạng thái bật/tắt cũ
+                    mode="AI",                # Chỉ đổi mode sang AI
+                    temp=last_log.temp,
+                    humi=last_log.humi,
+                    light=last_log.light,
+                    gas=last_log.gas,
+                ))
+                count += 1
+        db.session.commit()
+        return jsonify({"status": "ok", "reset_count": count})
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -216,6 +260,7 @@ def train_from_db():
         db.session.query(DeviceLog, Device)
         .join(Device, DeviceLog.device_id == Device.id)
         .filter(DeviceLog.temp.isnot(None))
+        .filter(Device.type.in_(["light", "fan"]))
         .all()
     )
 

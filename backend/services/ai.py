@@ -137,31 +137,50 @@ def train_and_save_model(dataset_path):
     X_train_proc = preprocessor.fit_transform(X_train)
     X_test_proc  = preprocessor.transform(X_test)
 
-    # 5. HUẤN LUYỆN MODEL TỰ VIẾT ─────────────────────────────────────────────
-    model = LogisticRegression(eta=0.001, n_iter=5000, class_weight='balanced')
-    model.fit(X_train_proc, y_train)
-
-    # 6. TÍNH ACCURACY ────────────────────────────────────────────────────────
+    # 5. HUẤN LUYỆN MODEL TỰ VIẾT (TRAIN RIÊNG TỪNG THIẾT BỊ) ─────────────────
+    models = {}
     results = {}
+    
+    # Tính accuracy tổng
+    total_correct = 0
+    total_samples = 0
 
-    overall_acc = model.score(X_test_proc, y_test)
-    results["Toàn bộ hệ thống"] = round(overall_acc * 100, 2)
+    X_train_df = X_train.reset_index(drop=True)
+    y_train_arr = y_train
+    X_test_df = X_test.reset_index(drop=True)
+    y_test_arr = y_test
 
-    # Accuracy riêng từng thiết bị (theo Device_ID trong X_test)
-    X_test_reset = X_test.reset_index(drop=True)
     for device_id in df['Device_ID'].unique():
-        mask = (X_test_reset['Device_ID'] == device_id).values
-        if mask.sum() > 0:
-            acc = model.score(X_test_proc[mask], y_test[mask])
-            # Lấy tên thiết bị để hiển thị thân thiện hơn
-            device_name = df.loc[df['Device_ID'] == device_id, 'Tên thiết bị'].iloc[0]
-            results[f"{device_name} (ID {device_id})"] = round(acc * 100, 2)
+        # Lọc dữ liệu train cho thiết bị này
+        train_mask = (X_train_df['Device_ID'] == device_id).values
+        test_mask = (X_test_df['Device_ID'] == device_id).values
+        
+        if train_mask.sum() > 0:
+            model = LogisticRegression(eta=0.001, n_iter=5000, class_weight='balanced')
+            model.fit(X_train_proc[train_mask], y_train_arr[train_mask])
+            models[device_id] = model
+            
+            # Tính accuracy trên tập test của thiết bị này
+            if test_mask.sum() > 0:
+                acc = model.score(X_test_proc[test_mask], y_test_arr[test_mask])
+                device_name = df.loc[df['Device_ID'] == device_id, 'Tên thiết bị'].iloc[0]
+                results[f"{device_name} (ID {device_id})"] = round(acc * 100, 2)
+                
+                # Cộng dồn để tính accuracy tổng
+                preds = model.predict(X_test_proc[test_mask])
+                total_correct += np.sum(preds == y_test_arr[test_mask])
+                total_samples += test_mask.sum()
 
-    # 7. LƯU MODEL & PREPROCESSOR ─────────────────────────────────────────────
+    if total_samples > 0:
+        results["Toàn bộ hệ thống"] = round((total_correct / total_samples) * 100, 2)
+    else:
+        results["Toàn bộ hệ thống"] = 0.0
+
+    # 7. LƯU DICTIONARY CÁC MODEL & PREPROCESSOR ──────────────────────────────
     os.makedirs(MODEL_DIR, exist_ok=True)
 
     with open(MODEL_PATH, 'wb') as f:
-        pickle.dump(model, f)
+        pickle.dump(models, f)
     with open(PREPROCESSOR_PATH, 'wb') as f:
         pickle.dump(preprocessor, f)
 
@@ -184,11 +203,11 @@ def predict_behavior(temp, humi, light, current_datetime):
         print("⚠️  Model chưa được huấn luyện! Hãy upload dataset và train trước.")
         return predictions
 
-    # Load model & preprocessor
+    # Load dictionary models & preprocessor
     with open(PREPROCESSOR_PATH, 'rb') as f:
         preprocessor = pickle.load(f)
     with open(MODEL_PATH, 'rb') as f:
-        model = pickle.load(f)
+        models = pickle.load(f)
 
     # Trích xuất thời gian
     hour            = current_datetime.hour
@@ -219,8 +238,10 @@ def predict_behavior(temp, humi, light, current_datetime):
 
         try:
             X_proc = preprocessor.transform(df_input)
-            pred   = model.predict(X_proc)[0]
-            predictions[device.id] = int(pred)
+            model = models.get(device.id)
+            if model:
+                pred_status = int(model.predict(X_proc)[0])
+                predictions[device.id] = pred_status
         except Exception as e:
             print(f"⚠️  Lỗi dự đoán thiết bị {device.id}: {e}")
             predictions[device.id] = 0  # fallback tắt

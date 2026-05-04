@@ -48,7 +48,7 @@ function Dashboard() {
       hour: "2-digit", minute: "2-digit", second: "2-digit",
     });
     setChartData((prev) => {
-      const next = [...prev, { time: now, temp: sensors.temp, humi: sensors.humi, light: sensors.light }];
+      const next = [...prev, { time: now, temp: sensors.temp, humi: sensors.humi, light: sensors.light, gas: sensors.gas }];
       return next.slice(-20);
     });
   }, [sensors]);
@@ -116,6 +116,9 @@ function Dashboard() {
   // ── Nhóm thiết bị theo phòng ──────────────────────────────────────────────────
   const activeAlerts = accessLogs.filter((l) => l.is_alert);
   const devicesByRoom = devices.reduce((acc, d) => {
+    // Ẩn các cảm biến (sensor) khỏi danh sách thiết bị điều khiển ON/OFF
+    if (d.type === "sensor") return acc;
+    
     if (!acc[d.room]) acc[d.room] = [];
     acc[d.room].push(d);
     return acc;
@@ -165,7 +168,19 @@ function Dashboard() {
                 AI Mode
               </span>
               <button
-                onClick={() => setAiMode(!aiMode)}
+                onClick={async () => {
+                  const newMode = !aiMode;
+                  setAiMode(newMode);
+                  // Khi BẬT AI mode → gọi API reset tất cả thiết bị Manual về AI
+                  if (newMode) {
+                    try {
+                      await axios.post("/api/devices/reset-to-ai");
+                      fetchDevices(); // Refresh lại UI
+                    } catch (err) {
+                      console.error("Không thể reset về AI mode:", err);
+                    }
+                  }
+                }}
                 className="relative w-12 h-6 rounded-full transition-all"
                 style={{
                   background: aiMode ? "var(--accent)" : "rgba(255,255,255,0.1)",
@@ -268,6 +283,7 @@ function Dashboard() {
                 <Line type="monotone" dataKey="temp" stroke="#ff6b6b" dot={false} strokeWidth={1.5} name="Nhiệt độ (°C)" />
                 <Line type="monotone" dataKey="humi" stroke="#4ecdc4" dot={false} strokeWidth={1.5} name="Độ ẩm (%)" />
                 <Line type="monotone" dataKey="light" stroke="#ffd93d" dot={false} strokeWidth={1.5} name="Ánh sáng (lux)" />
+                <Line type="monotone" dataKey="gas" stroke="#a072ff" dot={false} strokeWidth={1.5} name="Khí gas (ppm)" />
               </LineChart>
             </ResponsiveContainer>
           ) : (
