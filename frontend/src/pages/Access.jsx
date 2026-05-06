@@ -108,12 +108,12 @@ function Access() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Image Preview */}
-            <div className="md:col-span-1">
+            <div className="md:col-span-1 flex justify-center">
               {liveImage ? (
-                <img src={liveImage} alt="latest" className="w-full h-40 rounded-sm object-cover"
+                <img src={liveImage} alt="latest" className="w-40 h-40 rounded-sm object-cover"
                   style={{ border: "1px solid rgba(255,255,255,0.1)" }} />
               ) : (
-                <div className="w-full h-40 rounded-sm flex items-center justify-center"
+                <div className="w-40 h-40 rounded-sm flex items-center justify-center text-center px-2"
                   style={{ background: "#000", border: "1px solid rgba(255,255,255,0.1)" }}>
                   <span style={{ color: "var(--muted)", fontSize: "12px", fontFamily: "monospace" }}>
                     Chờ ảnh từ ESP32...
