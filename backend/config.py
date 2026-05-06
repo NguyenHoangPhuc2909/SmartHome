@@ -31,3 +31,8 @@ class Config:
     # ── Upload ────────────────────────────────────────────────────────────
     CAPTURED_FACES_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "captured_faces")
     RECOG_IMAGES_DIR   = os.path.join(os.path.abspath(os.path.dirname(__file__)), "recog_images")
+
+
+    # ── Face Recognition Model (MobileFaceNet Embedding) ──────────────────
+    FACE_MODEL_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "trained_models", "mobilefacenet.onnx")
+    FACE_RECOGNITION_THRESHOLD = 0.65  # Confidence threshold (0-1)
