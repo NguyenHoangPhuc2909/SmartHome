@@ -12,18 +12,32 @@ face_model = EmbeddingModel.get_instance()
 face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
 
 def get_face_crop(img):
-    """Hàm phụ trợ: Tìm và cắt khuôn mặt to nhất trong ảnh"""
+    """Hàm phụ trợ: Tìm và cắt khuôn mặt (ép thành hình vuông)"""
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
     
     if len(faces) == 0:
         return None
         
-    # Lấy khuôn mặt lớn nhất (gần camera nhất)
+    # Lấy khuôn mặt lớn nhất
     x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
     
-    # Cắt ảnh màu (MobileFaceNet dùng ảnh màu)
-    face_crop = img[y:y+h, x:x+w]
+    # Ép khung cắt thành hình vuông bằng cách lấy cạnh lớn hơn
+    size = max(w, h)
+    
+    # Tính toán lại x, y để giữ tâm khuôn mặt ở giữa
+    center_x = x + w // 2
+    center_y = y + h // 2
+    
+    new_x = max(0, center_x - size // 2)
+    new_y = max(0, center_y - size // 2)
+    
+    # Đảm bảo không bị tràn viền ảnh gốc
+    new_x_end = min(img.shape[1], new_x + size)
+    new_y_end = min(img.shape[0], new_y + size)
+    
+    # Cắt ảnh vuông
+    face_crop = img[new_y:new_y_end, new_x:new_x_end]
     return face_crop
 
 def recognize_face(image_path: str, threshold: float = 0.65):
