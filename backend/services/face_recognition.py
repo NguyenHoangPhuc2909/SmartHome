@@ -2,59 +2,81 @@ import cv2
 import os
 import numpy as np
 
+# Import model MobileFaceNet
+from services.embedding_helper import EmbeddingModel
+from models import FaceDataset
 
-def recognize_face(image_path: str, threshold: float = 0.75):
-    """
-    So sánh ảnh từ ESP32 với toàn bộ dataset trong captured_faces/.
-    Trả về (matched_dataset_id, confidence) hoặc (None, 0.0) nếu không khớp.
-    """
-    from models import FaceDataset
+face_model = EmbeddingModel.get_instance()
 
+# Load Haar Cascade để dò tìm vị trí khuôn mặt
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+def get_face_crop(img):
+    """Hàm phụ trợ: Tìm và cắt khuôn mặt to nhất trong ảnh"""
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5)
+    
+    if len(faces) == 0:
+        return None
+        
+    # Lấy khuôn mặt lớn nhất (gần camera nhất)
+    x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
+    
+    # Cắt ảnh màu (MobileFaceNet dùng ảnh màu)
+    face_crop = img[y:y+h, x:x+w]
+    return face_crop
+
+def recognize_face(image_path: str, threshold: float = 0.65):
     img = cv2.imread(image_path)
     if img is None:
         return None, 0.0
 
-    gray      = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    cascade   = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
-    faces     = cascade.detectMultiScale(gray, 1.1, 5)
+    # 1. TÌM VÀ CẮT KHUÔN MẶT TỪ ẢNH ESP32/LAPTOP
+    query_crop = get_face_crop(img)
+    if query_crop is None:
+        return None, 0.0 # Không thấy ai trong hình
 
-    if len(faces) == 0:
-        return None, 0.0
+    # 2. TRÍCH XUẤT ĐẶC TRƯNG (1 BƯỚC CNN)
+    query_emb = face_model.extract_embedding(query_crop)
 
-    # Lấy khuôn mặt lớn nhất
-    x, y, w, h  = max(faces, key=lambda f: f[2] * f[3])
-    face_crop   = cv2.resize(gray[y:y + h, x:x + w], (112, 112))
+    best_match_id = None
+    min_distance = float('inf')
 
-    recognizer  = cv2.face.LBPHFaceRecognizer_create()
-    labels      = []
-    faces_train = []
-    dataset_map = {}  # label index → dataset id
-
+    # 3. ĐỌC DATASET VÀ SO SÁNH
     datasets = FaceDataset.query.all()
-    for idx, ds in enumerate(datasets):
+    for ds in datasets:
         path = f"captured_faces/{ds.name}"
         if not os.path.exists(path):
             continue
+        
         for fname in os.listdir(path):
             if not fname.endswith(".jpg"):
                 continue
-            fpath    = os.path.join(path, fname)
-            face_img = cv2.imread(fpath, cv2.IMREAD_GRAYSCALE)
-            face_img = cv2.resize(face_img, (112, 112))
-            faces_train.append(face_img)
-            labels.append(idx)
-        dataset_map[idx] = ds.id
+            
+            fpath = os.path.join(path, fname)
+            ds_img = cv2.imread(fpath)
+            if ds_img is None:
+                continue
+            
+            # Cắt khuôn mặt từ ảnh trong Dataset (Đảm bảo công bằng khi so sánh)
+            ds_crop = get_face_crop(ds_img)
+            if ds_crop is None:
+                continue # Bỏ qua ảnh dataset nếu không thấy mặt
+                
+            # Trích xuất embedding
+            ds_emb = face_model.extract_embedding(ds_crop)
+            
+            # Tính khoảng cách Cosine
+            dist = EmbeddingModel.cosine_distance(query_emb, ds_emb)
+            
+            if dist < min_distance:
+                min_distance = dist
+                best_match_id = ds.id
 
-    if not faces_train:
-        return None, 0.0
-
-    recognizer.train(faces_train, np.array(labels))
-    label, dist = recognizer.predict(face_crop)
-
-    # LBPH: dist càng nhỏ càng giống — chuyển sang confidence 0.0–1.0
-    confidence = max(0.0, 1.0 - dist / 100.0)
+    # 4. TÍNH ĐỘ TỰ TIN
+    confidence = 1.0 - min_distance if min_distance != float('inf') else 0.0
 
     if confidence >= threshold:
-        return dataset_map.get(label), confidence
+        return best_match_id, confidence
 
     return None, confidence

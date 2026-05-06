@@ -9,3 +9,4 @@ pymysql
 pandas
 openpyxl
 scikit-learn
+onnxruntime
