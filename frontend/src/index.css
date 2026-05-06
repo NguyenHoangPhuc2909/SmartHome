@@ -5,12 +5,12 @@
 @tailwind utilities;
 
 :root {
-  --bg:      #0d0f0f;
+  --bg: #0d0f0f;
   --surface: #141718;
-  --border:  rgba(255,255,255,0.07);
-  --accent:  #b8f550;
-  --text:    #f0f0ec;
-  --muted:   #6b6f68;
+  --border: rgba(255, 255, 255, 0.07);
+  --accent: #b8f550;
+  --text: #f0f0ec;
+  --muted: #6b6f68;
 }
 
 body {
@@ -23,7 +23,18 @@ body {
   box-sizing: border-box;
 }
 
+
+
 /* Scrollbar */
-::-webkit-scrollbar       { width: 4px; }
-::-webkit-scrollbar-track  { background: var(--surface); }
-::-webkit-scrollbar-thumb  { background: var(--muted); border-radius: 2px; }
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--muted);
+  border-radius: 2px;
+}
