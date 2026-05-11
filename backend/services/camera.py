@@ -15,13 +15,30 @@ ANGLE_LABEL = {
 
 class VideoCamera(object):
     def __init__(self):
-        self.video           = cv2.VideoCapture(0)
-        self.face_cascade    = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
-        self.profile_cascade = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_profileface.xml"
-        )
+        # ĐỔI THÀNH IP ESP32-CAM CỦA BẠN NHÉ (Ví dụ: http://192.168.1.100:81/stream)
+        self.stream_url      = "http://192.168.1.42/stream" 
+        
+        # --- NÂNG CẤP LÊN YUNET ---
+        try:
+            self.detector = cv2.FaceDetectorYN.create(
+                model="trained_models/face_detection_yunet.onnx",
+                config="",
+                input_size=(320, 320),
+                score_threshold=0.8,
+                nms_threshold=0.3,
+                top_k=5000
+            )
+            self.use_yunet = True
+            print("[INFO] Đã kích hoạt YuNet Face Detector!")
+        except Exception as e:
+            print(f"[CẢNH BÁO] Không load được YuNet ({e}), dùng lại Haar Cascade.")
+            self.use_yunet = False
+            self.face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+            )
+            self.profile_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_profileface.xml"
+            )
         self.limit_per_pos   = 5
         self.angles          = ["Thang", "Trai", "Phai", "Len", "Xuong"]
         self.last_save_time  = 0
@@ -33,9 +50,57 @@ class VideoCamera(object):
         self.pause_until     = 0.0   # epoch time khi hết pause
         self.pause_msg       = ""
 
-    def __del__(self):
-        self.video.release()
+        # --- NÂNG CẤP: CHẠY NỀN ĐỂ TỰ NHẬN DIỆN TỪ ESP32-CAM ---
+        self.latest_frame    = None
+        self._lock           = threading.Lock()
+        self.active_viewers  = 0  # <--- Đếm số người đang xem Web
 
+        # Chạy thread lấy ảnh nền
+        self.thread = threading.Thread(target=self._update, daemon=True)
+        self.thread.start()
+
+    def __del__(self):
+        pass
+
+    def _update(self):
+        """Thread chạy ngầm: Lấy ảnh ESP32 liên tục qua cổng /capture (Cực kỳ ổn định)"""
+        import urllib.request
+        import numpy as np
+        import re
+        import requests
+
+        # Tự động lấy IP từ cấu hình để truy cập cổng 80 (/capture) thay vì 81 (/stream)
+        match = re.search(r'(http://[^:/]+)', self.stream_url)
+        capture_url = match.group(1) + "/capture" if match else self.stream_url
+
+        # Dùng Session để dùng chung 1 kết nối TCP (Tránh lỗi vỡ RAM error in accept 128 trên ESP32)
+        session = requests.Session()
+
+        while True:
+            # 💡 NẾU KHÔNG CÓ AI MỞ WEB, BACKEND SẼ ĐI NGỦ ĐỂ NHƯỜNG CAMERA CHO EDGE CLIENT
+            if self.active_viewers <= 0:
+                time.sleep(1)
+                continue
+
+            try:
+                # Ép lấy ảnh siêu tốc (10-20 FPS) để hết lag
+                time.sleep(0.05)
+                
+                # Gọi API /capture và lấy thẳng byte nội dung
+                response = session.get(capture_url, timeout=2)
+                jpg = response.content
+                
+                img = cv2.imdecode(np.frombuffer(jpg, dtype=np.uint8), cv2.IMREAD_COLOR)
+                if img is not None:
+                    with self._lock:
+                        self.latest_frame = img
+
+            except Exception as e:
+                print(f"[CẢNH BÁO] ESP32-CAM bị nghẽn mạng: {e}. Đang tự động thử lại...")
+                time.sleep(2)
+
+    def __del__(self):
+        pass
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     def _count_angle(self, path: str, angle: str) -> int:
@@ -51,22 +116,29 @@ class VideoCamera(object):
                 return angle, count
         return "Hoan thanh", 0
 
-    def _detect(self, gray, angle, w_img):
+    def _detect(self, frame_in, angle, w_img):
         """
-        Detect khuôn mặt theo góc.
-        Trả về list boxes (x, y, w, h) trên ảnh GỐC (đã flip ngang ở ngoài).
-        Vì img đã được flip(1) trước khi vào đây:
-          - "Trai" của người dùng = profile nhìn sang phải trong ảnh
-          - "Phai" của người dùng = profile nhìn sang trái  trong ảnh
+        Detect khuôn mặt theo góc. Hỗ trợ cả YuNet siêu nhẹ và Haar Cascade.
         """
+        if getattr(self, 'use_yunet', False):
+            # Cập nhật kích thước đầu vào cho detector (rất quan trọng với YuNet)
+            h, w = frame_in.shape[:2]
+            self.detector.setInputSize((w, h))
+            
+            _, faces = self.detector.detect(frame_in)
+            if faces is not None and len(faces) > 0:
+                # Dùng ngưỡng thấp hơn (0.7) vì mặt quay góc (profile) thường bị giảm độ tin cậy
+                return [face[:4].astype(int) for face in faces if face[-1] > 0.7]
+            return []
+
+        # NẾU KHÔNG CÓ MTCNN THÌ DÙNG HAAR
+        gray = frame_in
         if angle == "Thang":
             return self.face_cascade.detectMultiScale(
                 gray, 1.1, 6, minSize=(80, 80)
             )
 
         if angle == "Trai":
-            # Người quay trái → trong ảnh (đã mirror) khuôn mặt nhìn sang phải
-            # → flip lại để profile cascade detect được (cascade chỉ detect nhìn trái)
             flipped = cv2.flip(gray, 1)
             boxes   = self.profile_cascade.detectMultiScale(
                 flipped, 1.1, 6, minSize=(80, 80)
@@ -76,8 +148,6 @@ class VideoCamera(object):
             return [(w_img - x - w, y, w, h) for (x, y, w, h) in boxes]
 
         if angle == "Phai":
-            # Người quay phải → trong ảnh (đã mirror) khuôn mặt nhìn sang trái
-            # → profile cascade detect trực tiếp trên ảnh mirror
             return self.profile_cascade.detectMultiScale(
                 gray, 1.1, 6, minSize=(80, 80)
             )
@@ -92,13 +162,21 @@ class VideoCamera(object):
     # ── Main frame loop ───────────────────────────────────────────────────────
 
     def get_frame(self):
+        # Giới hạn tốc độ cho Frontend (20 FPS) để hình mượt nhất có thể
+        time.sleep(0.05)
+        
         with self._lock:
-            success, img = self.video.read()
-        if not success:
+            img = self.latest_frame
+            
+        if img is None:
             return None
 
-        # Flip ngang để hình không bị gương (selfie-style)
-        img = cv2.flip(img, 1)
+        # Copy để vẽ HUD không dính vào frame gốc
+        img = img.copy()
+
+        # ESP32-CAM nếu hình không bị ngược thì không cần flip. 
+        # Tạm thời comment lại, nếu bạn thấy ngược trái phải thì bỏ comment ra:
+        # img = cv2.flip(img, 1)
 
         h_img, w_img = img.shape[:2]
         center_x, center_y = w_img // 2, h_img // 2

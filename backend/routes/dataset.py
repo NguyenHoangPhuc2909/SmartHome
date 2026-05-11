@@ -122,6 +122,7 @@ def capture_status():
 @login_required
 def stream():
     def gen():
+        cam.active_viewers += 1
         try:
             while True:
                 frame = cam.get_frame()
@@ -135,6 +136,8 @@ def stream():
         except GeneratorExit:
             # Client đã ngắt kết nối — không làm gì thêm
             pass
+        finally:
+            cam.active_viewers -= 1
 
     return Response(
         gen(),

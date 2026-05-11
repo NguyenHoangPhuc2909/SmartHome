@@ -148,18 +148,13 @@ function Dashboard() {
             {/* Nút mở modal train */}
             <button
               onClick={() => setShowTrainModal(true)}
-              className="px-3 py-1.5 rounded-sm flex items-center gap-2 transition-all hover:opacity-80"
-              style={{
-                fontFamily: "monospace",
-                color: "var(--accent)",
-                background: "rgba(184,245,80,0.08)",
-                border: "1px solid rgba(184,245,80,0.2)",
-              }}
+              className="btn-secondary flex items-center gap-2"
+              style={{ fontSize: "12px" }}
             >
               <span className="text-xs tracking-widest uppercase font-bold">⚙️ Train AI</span>
             </button>
 
-            <div className="w-px h-6 bg-gray-700 opacity-50" />
+            <div style={{ width: "1px", height: "24px", background: "var(--border)" }} />
 
             {/* AI Mode toggle */}
             <div className="flex items-center gap-3">
@@ -183,13 +178,13 @@ function Dashboard() {
                 }}
                 className="relative w-12 h-6 rounded-full transition-all"
                 style={{
-                  background: aiMode ? "var(--accent)" : "rgba(255,255,255,0.1)",
+                  background: aiMode ? "var(--accent)" : "#CBD5E1",
                   border: "none", cursor: "pointer",
                 }}
               >
                 <div className="absolute top-1 w-4 h-4 rounded-full transition-all"
                   style={{
-                    background: aiMode ? "#0d0f0f" : "var(--muted)",
+                    background: aiMode ? "#ffffff" : "#9ca3af",
                     left: aiMode ? "calc(100% - 20px)" : "4px",
                   }}
                 />
@@ -224,13 +219,7 @@ function Dashboard() {
           </h2>
           {Object.entries(devicesByRoom).map(([room, devs]) => (
             <div key={room} className="mb-6">
-              <div className="text-xs mb-3 px-2 py-1 rounded-sm inline-block"
-                style={{
-                  fontFamily: "monospace",
-                  color: "var(--accent)",
-                  background: "rgba(184,245,80,0.08)",
-                  border: "1px solid rgba(184,245,80,0.2)",
-                }}>
+              <div className="badge badge-accent text-xs mb-3" style={{ fontSize: "11px" }}>
                 {roomLabel[room] || room}
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -259,8 +248,7 @@ function Dashboard() {
         </div>
 
         {/* ── Chart realtime ───────────────────────────────────────────────── */}
-        <div className="rounded-sm p-6"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <div className="card p-6">
           <h2 className="text-xs tracking-widest uppercase mb-6"
             style={{ fontFamily: "monospace", color: "var(--muted)" }}>
             Biểu đồ cảm biến realtime
@@ -272,18 +260,19 @@ function Dashboard() {
                 <YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} />
                 <Tooltip
                   contentStyle={{
-                    background: "var(--surface)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: 2,
+                    background: "#FFFFFF",
+                    border: "1px solid var(--border)",
+                    borderRadius: "8px",
                     color: "var(--text)",
-                    fontSize: 11,
+                    fontSize: 12,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
                   }}
                 />
                 <Legend wrapperStyle={{ fontSize: 11, color: "var(--muted)" }} />
-                <Line type="monotone" dataKey="temp" stroke="#ff6b6b" dot={false} strokeWidth={1.5} name="Nhiệt độ (°C)" />
-                <Line type="monotone" dataKey="humi" stroke="#4ecdc4" dot={false} strokeWidth={1.5} name="Độ ẩm (%)" />
-                <Line type="monotone" dataKey="light" stroke="#ffd93d" dot={false} strokeWidth={1.5} name="Ánh sáng (lux)" />
-                <Line type="monotone" dataKey="gas" stroke="#a072ff" dot={false} strokeWidth={1.5} name="Khí gas (ppm)" />
+                <Line type="monotone" dataKey="temp"  stroke="#DC2626" dot={false} strokeWidth={2} name="Nhiệt độ (°C)" />
+                <Line type="monotone" dataKey="humi"  stroke="#0284C7" dot={false} strokeWidth={2} name="Độ ẩm (%)" />
+                <Line type="monotone" dataKey="light" stroke="#D97706" dot={false} strokeWidth={2} name="Ánh sáng (lux)" />
+                <Line type="monotone" dataKey="gas"   stroke="#7C3AED" dot={false} strokeWidth={2} name="Khí gas (ppm)" />
               </LineChart>
             </ResponsiveContainer>
           ) : (
@@ -304,8 +293,7 @@ function Dashboard() {
           onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
         >
           <div
-            className="p-6 rounded-md shadow-2xl w-full max-w-md border"
-            style={{ background: "#111", borderColor: "rgba(255,255,255,0.1)" }}
+            className="card p-6 w-full max-w-md"
           >
             {/* Header modal */}
             <div className="flex items-center justify-between mb-2">
@@ -352,7 +340,7 @@ function Dashboard() {
                 {/* Bảng kết quả accuracy */}
                 <div
                   className="rounded-sm overflow-hidden"
-                  style={{ border: "1px solid rgba(184,245,80,0.2)" }}
+                  style={{ border: "1px solid rgba(45,158,107,0.25)" }}
                 >
                   {trainLines.slice(1).map((line, idx) => {
                     // Mỗi dòng có dạng "Tên thiết bị (ID x): 92.5%"
@@ -371,8 +359,8 @@ function Dashboard() {
                         key={idx}
                         className="px-4 py-3"
                         style={{
-                          background: idx % 2 === 0 ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.01)",
-                          borderBottom: idx < trainLines.length - 2 ? "1px solid rgba(255,255,255,0.05)" : "none",
+                          background: idx % 2 === 0 ? "#f9fafb" : "#ffffff",
+                          borderBottom: idx < trainLines.length - 2 ? "1px solid var(--border)" : "none",
                         }}
                       >
                         <div className="flex justify-between items-center mb-1">
@@ -385,7 +373,7 @@ function Dashboard() {
                         </div>
                         {/* Thanh progress */}
                         {!isNaN(accNum) && (
-                          <div className="w-full rounded-full h-1" style={{ background: "rgba(255,255,255,0.08)" }}>
+                          <div className="w-full rounded-full h-1" style={{ background: "#e5e7eb" }}>
                             <div
                               className="h-1 rounded-full transition-all"
                               style={{ width: `${accNum}%`, background: barColor }}
@@ -400,7 +388,7 @@ function Dashboard() {
                 <button
                   onClick={closeModal}
                   className="mt-4 w-full py-2 text-xs uppercase tracking-widest font-bold rounded-sm transition-all hover:opacity-90"
-                  style={{ background: "var(--accent)", color: "#0d0f0f", border: "none", cursor: "pointer" }}
+                  style={{ background: "var(--accent)", color: "#ffffff", border: "none", cursor: "pointer" }}
                 >
                   Xong
                 </button>
@@ -428,7 +416,7 @@ function Dashboard() {
                   style={{
                     color: "var(--muted)",
                     background: "transparent",
-                    border: "1px solid rgba(255,255,255,0.1)",
+                    border: "1px solid var(--border)",
                     cursor: "pointer",
                   }}
                 >
@@ -453,7 +441,7 @@ function Dashboard() {
                   <button
                     onClick={() => fileInputRef.current.click()}
                     className="w-full py-3 px-4 flex flex-col items-start gap-1 rounded-sm transition-all text-left hover:opacity-90"
-                    style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)" }}
+                    style={{ background: "#f3f4f6", border: "1px solid var(--border)" }}
                   >
                     <span className="font-bold text-sm" style={{ color: "var(--text)" }}>
                       📁 Tải lên Dataset
@@ -467,7 +455,7 @@ function Dashboard() {
                   <button
                     onClick={handleTrainFromDB}
                     className="w-full py-3 px-4 flex flex-col items-start gap-1 rounded-sm transition-all text-left hover:opacity-90"
-                    style={{ background: "rgba(184,245,80,0.1)", border: "1px solid rgba(184,245,80,0.25)" }}
+                    style={{ background: "var(--accent-light)", border: "1px solid rgba(45,158,107,0.3)" }}
                   >
                     <span className="font-bold text-sm" style={{ color: "var(--accent)" }}>
                       🗄️ Trích xuất từ Database
@@ -485,7 +473,7 @@ function Dashboard() {
                     style={{
                       color: "var(--muted)",
                       background: "transparent",
-                      border: "1px solid rgba(255,255,255,0.1)",
+                      border: "1px solid var(--border)",
                       cursor: "pointer",
                     }}
                   >
