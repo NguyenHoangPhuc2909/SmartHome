@@ -20,6 +20,35 @@ const useStore = create((set, get) => ({
     try {
       const res = await api.get("/api/devices/status");
       set({ devices: res.data });
+
+      // Lấy các chỉ số cảm biến mới nhất từ tất cả device (kể cả light/fan khi Postman/ESP32 gửi)
+      let latestSensors = { temp: null, humi: null, light: null, gas: null };
+      res.data.forEach((d) => {
+        // Ưu tiên đọc từ sensor device trước
+        if (d.type === "sensor") {
+          if (d.sensor_type === "temp" && d.temp != null) latestSensors.temp = d.temp;
+          if (d.sensor_type === "humi" && d.humi != null) latestSensors.humi = d.humi;
+          if (d.sensor_type === "light" && d.light != null) latestSensors.light = d.light;
+          if (d.sensor_type === "gas" && d.gas != null) latestSensors.gas = d.gas;
+        }
+        // Fallback: nếu sensor device chưa có, lấy từ log của light/fan (khi test Postman)
+        else if (d.type === "light" || d.type === "fan") {
+          if (latestSensors.temp == null && d.temp != null) latestSensors.temp = d.temp;
+          if (latestSensors.humi == null && d.humi != null) latestSensors.humi = d.humi;
+          if (latestSensors.light == null && d.light != null) latestSensors.light = d.light;
+          if (latestSensors.gas == null && d.gas != null) latestSensors.gas = d.gas;
+        }
+      });
+      // Chỉ cập nhật những giá trị thực sự có (null → giữ nguyên "--")
+      const prev = get().sensors;
+      set({
+        sensors: {
+          temp: latestSensors.temp ?? prev.temp,
+          humi: latestSensors.humi ?? prev.humi,
+          light: latestSensors.light ?? prev.light,
+          gas: latestSensors.gas ?? prev.gas,
+        }
+      });
     } catch (err) {
       console.error("fetchDevices:", err);
     }
@@ -80,6 +109,55 @@ const useStore = create((set, get) => ({
       set({ datasets: res.data });
     } catch (err) {
       console.error("fetchDatasets:", err);
+    }
+  },
+
+  recognitionLive: {
+    isProcessing: false,
+    lastResult: null,
+    lastConfidence: 0,
+    lastMatchName: null,
+    lastTimestamp: null,
+  },
+
+  setRecognitionLive: (data) => set({ recognitionLive: data }),
+
+  // Gọi khi ESP32 gửi ảnh
+  processRecognition: async (imageFile) => {
+    const state = get();
+
+    // Tránh xử lý đồng thời
+    if (state.recognitionLive.isProcessing) return;
+
+    set((s) => ({
+      recognitionLive: { ...s.recognitionLive, isProcessing: true }
+    }));
+
+    const formData = new FormData();
+    formData.append("image", imageFile);
+
+    try {
+      const res = await api.post("/api/access/recognize", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+
+      set((s) => ({
+        recognitionLive: {
+          isProcessing: false,
+          lastResult: res.data.result,
+          lastConfidence: res.data.confidence,
+          lastMatchName: res.data.matched_name || "Không xác định",
+          lastTimestamp: new Date().toISOString(),
+        }
+      }));
+
+      // Auto refresh access logs
+      setTimeout(() => get().fetchAccessLogs(), 500);
+    } catch (err) {
+      console.error("Recognition error:", err);
+      set((s) => ({
+        recognitionLive: { ...s.recognitionLive, isProcessing: false }
+      }));
     }
   },
 

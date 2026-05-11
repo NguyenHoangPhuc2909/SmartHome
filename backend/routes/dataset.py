@@ -54,6 +54,8 @@ def rename_dataset(ds_id):
     new_name = (request.json or {}).get("name", "").strip()
     if not new_name:
         return jsonify({"error": "Tên không hợp lệ"}), 400
+    if FaceDataset.query.filter_by(name=new_name).first():
+        return jsonify({"error": "Tên đã tồn tại"}), 400
     old_path = f"captured_faces/{ds.name}"
     new_path = f"captured_faces/{new_name}"
     if os.path.exists(old_path):
@@ -68,6 +70,10 @@ def rename_dataset(ds_id):
 @login_required
 def delete_dataset(ds_id):
     ds = FaceDataset.query.filter_by(id=ds_id, user_id=session["user_id"]).first_or_404()
+    # Nếu đang capture dataset này thì dừng lại
+    if cam.current_user == ds.name:
+        cam.is_capturing = False
+        cam.current_user = ""
     path = f"captured_faces/{ds.name}"
     if os.path.exists(path):
         shutil.rmtree(path)
@@ -83,8 +89,12 @@ def capture_start():
     name = (request.json or {}).get("name", "").strip()
     if not name:
         return jsonify({"error": "Thiếu tên"}), 400
-    cam.current_user   = name
-    cam.is_capturing   = True
+    # Kiểm tra dataset thuộc user hiện tại
+    ds = FaceDataset.query.filter_by(name=name, user_id=session["user_id"]).first()
+    if not ds:
+        return jsonify({"error": "Dataset không tồn tại"}), 404
+    cam.current_user = name
+    cam.is_capturing = True
     return jsonify({"status": "ok"})
 
 
@@ -92,9 +102,19 @@ def capture_start():
 @dataset_bp.route("/capture/stop", methods=["POST"])
 @login_required
 def capture_stop():
-    cam.is_capturing   = False
-    cam.current_user   = ""
+    cam.is_capturing = False
+    cam.current_user = ""
     return jsonify({"status": "ok"})
+
+
+# ── Trạng thái capture (để frontend polling) ───────────────────────────────
+@dataset_bp.route("/capture/status", methods=["GET"])
+@login_required
+def capture_status():
+    return jsonify({
+        "is_capturing": cam.is_capturing,
+        "current_user": cam.current_user,
+    })
 
 
 # ── Video stream ───────────────────────────────────────────────────────────
@@ -102,8 +122,29 @@ def capture_stop():
 @login_required
 def stream():
     def gen():
-        while True:
-            frame = cam.get_frame()
-            if frame:
-                yield (b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n")
-    return Response(gen(), mimetype="multipart/x-mixed-replace; boundary=frame")
+        cam.active_viewers += 1
+        try:
+            while True:
+                frame = cam.get_frame()
+                if frame:
+                    yield (
+                        b"--frame\r\n"
+                        b"Content-Type: image/jpeg\r\n\r\n"
+                        + frame
+                        + b"\r\n"
+                    )
+        except GeneratorExit:
+            # Client đã ngắt kết nối — không làm gì thêm
+            pass
+        finally:
+            cam.active_viewers -= 1
+
+    return Response(
+        gen(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            # Ngăn browser cache stream
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma":        "no-cache",
+        },
+    )
