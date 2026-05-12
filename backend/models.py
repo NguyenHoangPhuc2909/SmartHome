@@ -1,24 +1,29 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash
 
 db = SQLAlchemy()
-
 
 # ── Users ──────────────────────────────────────────────────────────────────
 class User(db.Model):
     __tablename__ = "users"
 
-    id         = db.Column(db.Integer, primary_key=True)
-    google_id  = db.Column(db.String(128), unique=True, nullable=False)
-    name       = db.Column(db.String(128))
-    email      = db.Column(db.String(256), unique=True)
-    avatar     = db.Column(db.String(512))
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    id            = db.Column(db.Integer, primary_key=True)
+    username      = db.Column(db.String(64), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    name          = db.Column(db.String(128))
+    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
 
     datasets = db.relationship("FaceDataset", backref="owner", lazy=True, cascade="all, delete")
 
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
     def __repr__(self):
-        return f"<User {self.name}>"
+        return f"<User {self.username}>"
 
 
 # ── Face Datasets ──────────────────────────────────────────────────────────

@@ -86,8 +86,8 @@ class EmbeddingModel:
         # Resize về kích thước model
         face_resized = cv2.resize(face_image, target_size)
         
-        # Normalize (0-1)
-        face_normalized = face_resized.astype('float32') / 255.0
+        # Normalize cho MobileFaceNet (quan trọng!): (x - 127.5) / 128.0
+        face_normalized = (face_resized.astype('float32') - 127.5) / 128.0
         
         # Chuyển đổi BGR sang RGB (nếu model yêu cầu)
         # Một số model ONNX chuyển từ Keras cần input RGB

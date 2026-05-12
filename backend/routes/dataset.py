@@ -138,6 +138,8 @@ def stream():
             pass
         finally:
             cam.active_viewers -= 1
+            if cam.active_viewers <= 0:
+                cam.release_camera()
 
     return Response(
         gen(),

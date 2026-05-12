@@ -13,6 +13,19 @@ const useStore = create((set, get) => ({
       set({ user: null });
     }
   },
+  login: async (username, password) => {
+    const res = await api.post("/auth/login", { username, password });
+    set({ user: res.data });
+    return res.data;
+  },
+  register: async (username, password, name) => {
+    const res = await api.post("/auth/register", { username, password, name });
+    return res.data;
+  },
+  logout: async () => {
+    await api.get("/auth/logout");
+    set({ user: null });
+  },
 
   // ── Devices ───────────────────────────────────────────────────────────────
   devices: [],

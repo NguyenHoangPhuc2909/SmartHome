@@ -4,8 +4,8 @@ import datetime
 import traceback
 
 import pandas as pd
-from flask import Blueprint, request, jsonify
-from models import db, Device, DeviceLog
+from flask import Blueprint, request, jsonify, session
+from models import db, Device, DeviceLog, User
 
 device_bp = Blueprint("device", __name__)
 
@@ -60,11 +60,6 @@ def get_status():
 # ══════════════════════════════════════════════════════════════════════════════
 @device_bp.route("/reset-to-ai", methods=["POST"])
 def reset_to_ai():
-    """
-    Khi người dùng bật AI Mode trên Web, gọi API này để:
-    - Ghi log mới với mode='AI' cho toàn bộ thiết bị đang ở mode='Manual'
-    - Từ đó AI sẽ tiếp tục kiểm soát tất cả thiết bị
-    """
     try:
         devices = Device.query.filter(Device.type.in_(["light", "fan"])).all()
         count = 0
@@ -75,12 +70,11 @@ def reset_to_ai():
                 .order_by(DeviceLog.timestamp.desc())
                 .first()
             )
-            # Chỉ reset những thiết bị đang bị kẹt ở Manual
             if last_log and last_log.mode == "Manual":
                 db.session.add(DeviceLog(
                     device_id=d.id,
-                    status=last_log.status,   # Giữ nguyên trạng thái bật/tắt cũ
-                    mode="AI",                # Chỉ đổi mode sang AI
+                    status=last_log.status,
+                    mode="AI",
                     temp=last_log.temp,
                     humi=last_log.humi,
                     light=last_log.light,
@@ -119,11 +113,9 @@ def update_sensor():
                 .first()
             )
 
-            # Người dùng đang điều khiển tay → AI không can thiệp
             if last_log and last_log.mode == "Manual":
                 continue
 
-            # Trạng thái không đổi → không ghi log thừa
             if last_log and last_log.status == predicted_status and last_log.mode == "AI":
                 continue
 
@@ -285,7 +277,7 @@ def train_from_db():
             "Tháng":           ts.month,
             "Device_ID":       log.device_id,
             "Tên thiết bị":    device.name,
-            "Phòng":           device.room,      # FIX: lấy từ DB
+            "Phòng":           device.room,
             "Trạng thái":      log.status,
             "Trạng thái text": "BẬT" if log.status == 1 else "TẮT",
         })

@@ -1,36 +1,55 @@
-from flask import Blueprint, session, redirect, url_for, jsonify
-from flask_dance.contrib.google import google
+from flask import Blueprint, session, request, jsonify
 from models import db, User
 
 auth_bp = Blueprint("auth", __name__)
 
 
-@auth_bp.route("/auth/after_login")
-def after_login():
-    if not google.authorized:
-        return redirect(url_for("google.login"))
-    info = google.get("/oauth2/v2/userinfo").json()
-    user = User.query.filter_by(google_id=info["id"]).first()
-    if not user:
-        user = User(
-            google_id = info["id"],
-            name      = info.get("name", ""),
-            email     = info.get("email", ""),
-            avatar    = info.get("picture", ""),
-        )
-        db.session.add(user)
-        db.session.commit()
+@auth_bp.route("/auth/register", methods=["POST"])
+def register():
+    data = request.json or {}
+    username = data.get("username")
+    password = data.get("password")
+    name     = data.get("name", username)
+
+    if not username or not password:
+        return jsonify({"error": "Thiếu username hoặc password"}), 400
+
+    if User.query.filter_by(username=username).first():
+        return jsonify({"error": "Username đã tồn tại"}), 400
+
+    user = User(username=username, name=name)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+    return jsonify({"message": "Đăng ký thành công", "user": username})
+
+
+@auth_bp.route("/auth/login", methods=["POST"])
+def login():
+    data = request.json or {}
+    username = data.get("username")
+    password = data.get("password")
+
+    user = User.query.filter_by(username=username).first()
+    if not user or not user.check_password(password):
+        return jsonify({"error": "Username hoặc password sai"}), 401
+
     session["user_id"]   = user.id
-    session["user_name"] = user.name
-    session["avatar"]    = user.avatar
-    # redirect sang React frontend
-    return redirect("http://localhost:5173/dashboard")
+    session["user_name"] = user.username
+    
+    return jsonify({
+        "message": "Đăng nhập thành công",
+        "id":      user.id,
+        "name":    user.name,
+        "username": user.username
+    })
 
 
 @auth_bp.route("/auth/logout")
 def logout():
     session.clear()
-    return redirect("http://localhost:5173/login")
+    return jsonify({"message": "Đã đăng xuất"})
 
 
 @auth_bp.route("/auth/me")
@@ -41,8 +60,7 @@ def me():
     if not user:
         return jsonify({"error": "User not found"}), 404
     return jsonify({
-        "id":     user.id,
-        "name":   user.name,
-        "email":  user.email,
-        "avatar": user.avatar,
+        "id":       user.id,
+        "name":     user.name,
+        "username": user.username,
     })

@@ -191,13 +191,17 @@ def train_and_save_model(dataset_path):
 # ══════════════════════════════════════════════════════════════════════════════
 # HÀM DỰ ĐOÁN
 # ══════════════════════════════════════════════════════════════════════════════
-def predict_behavior(temp, humi, light, current_datetime):
+def predict_behavior(temp, humi, light, current_datetime, home_id=None):
     """
     Dự đoán trạng thái bật/tắt cho toàn bộ thiết bị (light, fan).
     Trả về dict {device_id: 0 hoặc 1}.
     """
     predictions = {}
-    devices = Device.query.filter(Device.type.in_(["light", "fan"])).all()
+    
+    query = Device.query.filter(Device.type.in_(["light", "fan"]))
+    if home_id:
+        query = query.filter(Device.home_id == home_id)
+    devices = query.all()
 
     if not os.path.exists(MODEL_PATH) or not os.path.exists(PREPROCESSOR_PATH):
         print("⚠️  Model chưa được huấn luyện! Hãy upload dataset và train trước.")

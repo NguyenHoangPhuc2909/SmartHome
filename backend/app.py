@@ -1,5 +1,4 @@
-from flask import Flask
-from flask_dance.contrib.google import make_google_blueprint
+from flask import Flask, request, jsonify
 from flask_apscheduler import APScheduler
 from models import db
 from config import Config
@@ -8,20 +7,27 @@ import os
 app = Flask(__name__)
 app.config.from_object(Config)
 
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
-
 # ── Database ───────────────────────────────────────────────────────────────
 db.init_app(app)
 
-# ── Google OAuth ───────────────────────────────────────────────────────────
-google_bp = make_google_blueprint(
-    client_id     = Config.GOOGLE_CLIENT_ID,
-    client_secret = Config.GOOGLE_CLIENT_SECRET,
-    scope         = ["profile", "email"],
-    redirect_to   = "auth.after_login",
-)
-app.register_blueprint(google_bp, url_prefix="/login")
+# ── IP Guard Middleware ────────────────────────────────────────────────────
+@app.before_request
+def limit_remote_addr():
+    """Chỉ cho phép truy cập từ mạng nội bộ (Local Network)"""
+    client_ip = request.remote_addr
+    # Cho phép localhost và dải IP nội bộ phổ biến
+    is_local = (
+        client_ip == "127.0.0.1" or 
+        client_ip.startswith("192.168.") or 
+        client_ip.startswith("10.") or
+        client_ip.startswith("172.16.") # và các dải khác nếu cần
+    )
+    
+    # Ngoại lệ cho một số trường hợp nếu bạn muốn (ví dụ API từ ESP32)
+    # Tuy nhiên ESP32 thường nằm trong mạng 192.168 nên is_local sẽ là True
+    
+    if not is_local:
+        return jsonify({"error": f"Access Denied: Your IP ({client_ip}) is not on the local network."}), 403
 
 # ── Routes ─────────────────────────────────────────────────────────────────
 from routes.auth     import auth_bp

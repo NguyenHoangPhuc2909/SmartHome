@@ -10,11 +10,13 @@ const links = [
 ];
 
 function Navbar() {
-  const user     = useStore((s) => s.user);
+  const user = useStore((s) => s.user);
+  const logout = useStore((s) => s.logout);
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    window.location.href = "http://localhost:5000/auth/logout";
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
   };
 
   return (
@@ -53,11 +55,6 @@ function Navbar() {
 
       {/* User + logout */}
       <div className="flex items-center gap-3">
-        {user?.avatar && (
-          <img src={user.avatar} alt={user.name}
-               className="w-7 h-7 rounded-full"
-               style={{ border: "1px solid rgba(255,255,255,0.1)" }} />
-        )}
         <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
           {user?.name}
         </span>
