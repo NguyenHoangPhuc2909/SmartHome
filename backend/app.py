@@ -15,16 +15,14 @@ db.init_app(app)
 def limit_remote_addr():
     """Chỉ cho phép truy cập từ mạng nội bộ (Local Network)"""
     client_ip = request.remote_addr
-    # Cho phép localhost và dải IP nội bộ phổ biến
+    
+    # Cho phép localhost (cả IPv4 và IPv6) và dải IP nội bộ phổ biến
     is_local = (
-        client_ip == "127.0.0.1" or 
+        client_ip in ["127.0.0.1", "::1"] or 
         client_ip.startswith("192.168.") or 
         client_ip.startswith("10.") or
-        client_ip.startswith("172.16.") # và các dải khác nếu cần
+        client_ip.startswith("172.16.")
     )
-    
-    # Ngoại lệ cho một số trường hợp nếu bạn muốn (ví dụ API từ ESP32)
-    # Tuy nhiên ESP32 thường nằm trong mạng 192.168 nên is_local sẽ là True
     
     if not is_local:
         return jsonify({"error": f"Access Denied: Your IP ({client_ip}) is not on the local network."}), 403
@@ -52,13 +50,17 @@ def run_schedules():
     with app.app_context():
         check_schedules()
 
-scheduler.start()
+# Tối ưu hóa: Ngăn scheduler khởi chạy 2 lần khi debug=True
+if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+    scheduler.start()
+    print("[INFO] APScheduler đã khởi động thành công!")
 
 # ── Init folders & DB ──────────────────────────────────────────────────────
 with app.app_context():
     os.makedirs(Config.CAPTURED_FACES_DIR, exist_ok=True)
     os.makedirs(Config.RECOG_IMAGES_DIR,   exist_ok=True)
     db.create_all()
+    print("[INFO] Khởi tạo các thư mục lưu trữ dữ liệu ảnh và Database thành công!")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

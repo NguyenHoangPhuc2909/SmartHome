@@ -185,8 +185,19 @@ class VideoCamera(object):
                     face_resized = cv2.resize(face_crop, (112, 112))
                     cv2.imwrite(os.path.join(path, f"{current_angle}_{current_count}.jpg"), face_resized)
                     self.last_save_time = now
+                    
                     if current_count + 1 >= self.limit_per_pos:
-                        self.pause_msg = f"Xong goc {ANGLE_LABEL.get(current_angle, current_angle)}!"
+                        # Từ điển tự động gợi ý góc tiếp theo (Không dấu cho OpenCV)
+                        NEXT_ANGLE_MSG = {
+                            'Thang': "Hay quay sang TRAI",
+                            'Trai':  "Hay quay sang PHAI",
+                            'Phai':  "Hay nguoc len TREN",
+                            'Len':   "Hay cui xuong DUOI",
+                            'Xuong': "Da xong! Hay an Luu."
+                        }
+                        
+                        # Lấy câu thông báo dựa trên góc vừa chụp xong
+                        self.pause_msg = NEXT_ANGLE_MSG.get(current_angle, "Chuyen goc...")
                         self.pause_until = now + 2.0
         
         # HUD
