@@ -33,6 +33,8 @@ class FaceDataset(db.Model):
     id         = db.Column(db.Integer, primary_key=True)
     user_id    = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     name       = db.Column(db.String(128), nullable=False)
+    # Thêm cột embedding kiểu Text để lưu chuỗi JSON của mảng vector đặc trưng
+    embedding  = db.Column(db.Text, nullable=True) 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     access_logs = db.relationship("AccessLog", backref="matched_dataset", lazy=True,

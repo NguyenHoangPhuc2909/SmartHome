@@ -1,35 +1,36 @@
 import cv2
 import requests
 
-# Đảm bảo port ở đây khớp với port Flask của bạn (thường là 5000)
-# Nếu backend của bạn có prefix /api thì url sẽ là http://localhost:5000/api/access/recognize
+# Đảm bảo port ở đây khớp với port Flask của bạn
 API_URL = "http://localhost:5000/api/access/recognize"
 
-# Mở camera laptop với cờ cv2.CAP_DSHOW để ép dùng DirectShow, tránh lỗi MSMF
+# Mở camera laptop với cờ cv2.CAP_DSHOW để tránh lỗi MSMF
 cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-
-# Nếu vẫn lỗi, bạn thử đổi số 0 thành 1: cap = cv2.VideoCapture(1, cv2.CAP_DSHOW)
 
 print("=== GIẢ LẬP ESP32-CAM BẰNG LAPTOP ===")
 print("Nhấn phím 'Space' (khoảng trắng) để chụp và gửi ảnh nhận diện.")
 print("Nhấn phím 'q' để thoát.")
 
 while True:
+    # 1. ĐỌC ẢNH GỐC TỪ CAMERA
     ret, frame = cap.read()
     if not ret:
         print("\n[LỖI] Không thể đọc từ camera laptop!")
-        print("-> Vui lòng kiểm tra lại xem Backend Flask (file dataset.py) có đang chạy và chiếm dụng Camera không.")
+        print("-> Vui lòng kiểm tra lại xem tiến trình khác có đang chiếm dụng Camera không.")
         break
 
-    # Hiển thị camera để bạn căn chỉnh khuôn mặt
-    cv2.imshow("ESP32 Simulator (Laptop Cam)", frame)
+    # 2. TẠO ẢNH LẬT (MIRROR) CHỈ ĐỂ HIỂN THỊ TRÊN MÀN HÌNH
+    display_frame = cv2.flip(frame, 1)
+
+    # Hiển thị camera bằng ảnh đã lật cho dễ căn chỉnh
+    cv2.imshow("ESP32 Simulator (Laptop Cam)", display_frame)
     key = cv2.waitKey(1)
 
     # Nếu nhấn phím Space
     if key % 256 == 32:
         print("\n[INFO] Đang chụp ảnh và gửi lên server...")
         
-        # Mã hoá frame ảnh sang định dạng JPEG
+        # 3. MÃ HOÁ VÀ GỬI ẢNH GỐC (KHÔNG LẬT) ĐỂ ĐẢM BẢO ĐỘ CHÍNH XÁC >85%
         _, buffer = cv2.imencode('.jpg', frame)
 
         # Tạo payload dạng multipart/form-data hệt như cách ESP32 gửi
@@ -49,7 +50,14 @@ while True:
                     print("   Lỗi:", data["error"])
                 else:
                     print(f"   - Kết quả: {data.get('result', 'Không có dữ liệu')}")
-                    print(f"   - Độ tự tin: {data.get('confidence', 'Không có dữ liệu')}")
+                    
+                    # Convert confidence sang % cho dễ nhìn (nếu nó là số float)
+                    conf = data.get('confidence', 0)
+                    if isinstance(conf, (int, float)):
+                        print(f"   - Điểm tương đồng(Cosine): {conf:.2f}")
+                    else:
+                        print(f"   - Điểm tương đồng(Cosine): {conf:.2f} ")
+                        
                     print(f"   - Tên nhận diện: {data.get('matched_name', 'Không có dữ liệu')}")
             except Exception as json_err:
                 print(f"[LỖI] Server không trả về JSON hợp lệ. Status code: {response.status_code}")
