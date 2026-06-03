@@ -39,10 +39,10 @@ const useStore = create((set, get) => ({
       res.data.forEach((d) => {
         // Ưu tiên đọc từ sensor device trước
         if (d.type === "sensor") {
-          if (d.sensor_type === "temp" && d.temp != null) latestSensors.temp = d.temp;
-          if (d.sensor_type === "humi" && d.humi != null) latestSensors.humi = d.humi;
-          if (d.sensor_type === "light" && d.light != null) latestSensors.light = d.light;
-          if (d.sensor_type === "gas" && d.gas != null) latestSensors.gas = d.gas;
+          if ((d.sensor_type === "temp" || d.sensor_type === "all") && d.temp != null) latestSensors.temp = d.temp;
+          if ((d.sensor_type === "humi" || d.sensor_type === "all") && d.humi != null) latestSensors.humi = d.humi;
+          if ((d.sensor_type === "light" || d.sensor_type === "all") && d.light != null) latestSensors.light = d.light;
+          if ((d.sensor_type === "gas" || d.sensor_type === "all") && d.gas != null) latestSensors.gas = d.gas;
         }
         // Fallback: nếu sensor device chưa có, lấy từ log của light/fan (khi test Postman)
         else if (d.type === "light" || d.type === "fan") {

@@ -102,6 +102,24 @@ def update_sensor():
 
         now = datetime.datetime.now()
 
+        # Luôn đảm bảo có 1 thiết bị "Cụm Cảm Biến" để lưu log cảm biến
+        master_sensor = Device.query.filter_by(type="sensor", sensor_type="all").first()
+        if not master_sensor:
+            master_sensor = Device(name="Cụm Cảm Biến", type="sensor", room="Phòng khách", sensor_type="all")
+            db.session.add(master_sensor)
+            db.session.commit()
+
+        # Lưu log cảm biến vào master_sensor
+        db.session.add(DeviceLog(
+            device_id=master_sensor.id,
+            status=1,
+            mode="AI",
+            temp=temp,
+            humi=humi,
+            light=light,
+            gas=gas,
+        ))
+
         from services.ai import predict_behavior
         predictions = predict_behavior(temp, humi, light, now)
 

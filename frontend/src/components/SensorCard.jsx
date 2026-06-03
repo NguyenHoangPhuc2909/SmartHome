@@ -1,6 +1,6 @@
-import { WiThermometer } from "react-icons/wi";
-import { WiHumidity } from "react-icons/wi";
+import { WiThermometer, WiHumidity } from "react-icons/wi";
 import { MdLightMode, MdOutlineGasMeter } from "react-icons/md";
+import { Card, CardContent, Typography, Box, Chip } from '@mui/material';
 
 const sensorConfig = {
   temp:  { label: "Nhiệt độ",  unit: "°C",  icon: WiThermometer,    color: "#ff6b6b" },
@@ -9,56 +9,68 @@ const sensorConfig = {
   gas:   { label: "Khí gas",   unit: "ppm", icon: MdOutlineGasMeter, color: "#ff6b35" },
 };
 
-function SensorCard({ type, value, room }) {
+function SensorCard({ type, value, room, selected, onClick }) {
   const config  = sensorConfig[type] || {};
   const Icon    = config.icon;
   const isAlert = type === "gas" && value !== "--" && value > 500;
 
   return (
-    <div className="rounded-sm p-4 flex flex-col gap-2 transition-all"
-         style={{
-           background: isAlert ? "rgba(255,107,53,0.08)" : "rgba(255,255,255,0.03)",
-           border: `1px solid ${isAlert ? "rgba(255,107,53,0.4)" : "rgba(255,255,255,0.07)"}`,
-         }}>
+    <Card 
+      onClick={onClick}
+      sx={{ 
+        height: '100%',
+        bgcolor: isAlert ? 'error.light' : selected ? 'primary.50' : 'background.paper',
+        color: isAlert ? 'error.contrastText' : 'text.primary',
+        transition: '0.3s',
+        border: isAlert 
+          ? '2px solid #ef4444' 
+          : selected 
+            ? '2px solid #3b82f6' 
+            : '1px solid #cbd5e1',
+        cursor: onClick ? 'pointer' : 'default',
+        transform: selected ? 'translateY(-2px)' : 'none',
+        boxShadow: selected ? 3 : 1,
+        '&:hover': {
+          transform: 'translateY(-2px)',
+          boxShadow: 3,
+        }
+      }}
+    >
+      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+          <Typography variant="overline" color={isAlert ? 'inherit' : 'textSecondary'} fontWeight="bold">
+            {config.label}
+          </Typography>
+          {Icon && <Icon size={24} style={{ color: isAlert ? '#fff' : config.color }} />}
+        </Box>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <span className="text-xs tracking-widest uppercase"
-              style={{ fontFamily: "monospace", color: "var(--muted)" }}>
-          {config.label}
-        </span>
-        {Icon && <Icon size={20} style={{ color: config.color }} />}
-      </div>
+        {/* Value */}
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, mb: 1 }}>
+          <Typography variant="h4" fontWeight="bold">
+            {value ?? "--"}
+          </Typography>
+          <Typography variant="body2" color={isAlert ? 'inherit' : 'textSecondary'}>
+            {config.unit}
+          </Typography>
+        </Box>
 
-      {/* Value */}
-      <div className="flex items-end gap-1">
-        <span className="text-3xl font-bold"
-              style={{ fontFamily: "monospace", color: isAlert ? "#ff6b35" : "var(--text)" }}>
-          {value ?? "--"}
-        </span>
-        <span className="text-sm mb-1" style={{ color: "var(--muted)" }}>
-          {config.unit}
-        </span>
-      </div>
+        {/* Room */}
+        <Typography variant="caption" display="block" color={isAlert ? 'inherit' : 'textSecondary'} sx={{ mb: isAlert ? 1 : 0 }}>
+          {room || "--"}
+        </Typography>
 
-      {/* Room */}
-      <div className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-        {room || "--"}
-      </div>
-
-      {/* Alert badge */}
-      {isAlert && (
-        <div className="text-xs px-2 py-0.5 rounded-sm self-start"
-             style={{
-               background: "rgba(255,107,53,0.15)",
-               color: "#ff6b35",
-               border: "1px solid rgba(255,107,53,0.3)",
-               fontFamily: "monospace",
-             }}>
-          ⚠ VƯỢT NGƯỠNG
-        </div>
-      )}
-    </div>
+        {/* Alert badge */}
+        {isAlert && (
+          <Chip 
+            label="⚠ VƯỢT NGƯỠNG" 
+            size="small" 
+            color="error" 
+            sx={{ fontWeight: 'bold', mt: 1 }}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

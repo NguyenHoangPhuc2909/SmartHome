@@ -1,21 +1,25 @@
 import { useEffect, useState } from "react";
-import { MdCheckCircle, MdCancel, MdWarning, MdFilterList, MdRefresh } from "react-icons/md";
+import { MdCheckCircle, MdCancel, MdWarning, MdRefresh, MdFilterList } from "react-icons/md";
 import useStore from "../store";
+import {
+  Box, Typography, Button, Card, CardContent, Grid, TextField,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, Chip, LinearProgress, useTheme, Alert
+} from "@mui/material";
 
 function Access() {
+  const theme = useTheme();
   const { accessLogs, fetchAccessLogs } = useStore();
-  const [filter, setFilter] = useState("ALL");   // ALL | GRANTED | DENIED
+  const [filter, setFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState("");
   const [liveImage, setLiveImage] = useState(null);
 
-  // Fetch access logs mỗi 5 giây
   useEffect(() => {
     fetchAccessLogs();
     const interval = setInterval(fetchAccessLogs, 5000);
     return () => clearInterval(interval);
   }, []);
 
-  // Fetch ảnh live mỗi 1 giây
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
@@ -23,14 +27,12 @@ function Access() {
         if (res.ok) {
           const blob = await res.blob();
           const url = URL.createObjectURL(blob);
-          // Revoke URL cũ để không rò rỉ memory
           setLiveImage((prev) => {
             if (prev) URL.revokeObjectURL(prev);
             return url;
           });
         }
       } catch (e) {
-        // Silent fail — không hiển thị lỗi nếu chưa có ảnh
       }
     }, 1000);
 
@@ -45,7 +47,7 @@ function Access() {
   const filtered = accessLogs.filter((l) => {
     if (filter !== "ALL" && l.result !== filter) return false;
     if (dateFilter) {
-      const logDate = new Date(l.timestamp).toLocaleDateString("en-CA"); // YYYY-MM-DD
+      const logDate = new Date(l.timestamp).toLocaleDateString("en-CA");
       if (logDate !== dateFilter) return false;
     }
     return true;
@@ -56,358 +58,285 @@ function Access() {
   const alertCount = accessLogs.filter((l) => l.is_alert).length;
 
   return (
-    <div className="pt-14 min-h-screen" style={{ background: "var(--bg)" }}>
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <Box sx={{ width: '100%' }}>
+      {/* Header */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+        <Box>
+          <Typography variant="h4" fontWeight="bold">Lịch sử truy cập</Typography>
+          <Typography variant="body2" color="textSecondary">
+            Lịch sử nhận diện khuôn mặt tại cửa và các cảnh báo.
+          </Typography>
+        </Box>
+        <Button 
+          variant="outlined" 
+          startIcon={<MdRefresh />}
+          onClick={fetchAccessLogs}
+          sx={{ fontWeight: 'bold' }}
+        >
+          Làm mới
+        </Button>
+      </Box>
 
-        {/* Header + Live Widget */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Left: Title */}
-          <div className="lg:col-span-2">
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "monospace", color: "var(--text)" }}>
-              Access Logs
-            </h1>
-            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-              Lịch sử nhận diện khuôn mặt tại cửa
-            </p>
-          </div>
+      {/* Live Widget */}
+      <Card sx={{ mb: 4,  border: `1px solid ${theme.palette.divider}`, boxShadow: 'none' }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'error.main', animation: 'pulse 2s infinite' }} />
+              <Typography variant="subtitle2" fontWeight="bold" color="error">
+                LIVE RECOGNITION
+              </Typography>
+            </Box>
+            <Typography variant="caption" color="textSecondary">Cập nhật mỗi 1 giây</Typography>
+          </Box>
 
-          {/* Right: Refresh Button */}
-          <div className="flex justify-end">
-            <button onClick={fetchAccessLogs}
-              className="flex items-center gap-2 px-3 py-2 rounded-sm text-xs transition-all hover:opacity-80"
-              style={{
-                background: "rgba(255,255,255,0.05)",
-                color: "var(--muted)",
-                border: "1px solid rgba(255,255,255,0.07)",
-                cursor: "pointer",
-                fontFamily: "monospace",
-              }}>
-              <MdRefresh size={14} /> Làm mới
-            </button>
-          </div>
-        </div>
+          <Grid container spacing={4} alignItems="center">
+            {/* Live Camera Feed */}
+            <Grid item xs={12} sm={4} md={3} sx={{ display: 'flex', justifyContent: 'center' }}>
+              <Box sx={{ width: 160, height: 160, borderRadius: 1, overflow: 'hidden', bgcolor: 'black', border: `1px solid ${theme.palette.divider}` }}>
+                {liveImage ? (
+                  <img src={liveImage} alt="Live" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
+                    <Typography variant="caption">Chờ kết nối camera...</Typography>
+                  </Box>
+                )}
+              </Box>
+            </Grid>
 
-        {/* Live Recognition Widget */}
-        <div className="rounded-sm p-6 mb-8"
-          style={{
-            background: "rgba(255,255,255,0.03)",
-            border: "1px solid rgba(255,255,255,0.1)",
-          }}>
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: "#ff6b35" }} />
-              <span className="text-xs font-bold tracking-widest"
-                style={{ color: "#ff6b35", fontFamily: "monospace" }}>
-                🔴 LIVE RECOGNITION
-              </span>
-            </div>
-            <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-              Cập nhật mỗi 1 giây
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Image Preview */}
-            <div className="md:col-span-1 flex justify-center">
-              {liveImage ? (
-                <img src={liveImage} alt="latest" className="w-40 h-40 rounded-sm object-cover"
-                  style={{ border: "1px solid rgba(255,255,255,0.1)" }} />
-              ) : (
-                <div className="w-40 h-40 rounded-sm flex items-center justify-center text-center px-2"
-                  style={{ background: "#000", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <span style={{ color: "var(--muted)", fontSize: "12px", fontFamily: "monospace" }}>
-                    Chờ ảnh từ ESP32...
-                  </span>
-                </div>
-              )}
-            </div>
-
-            {/* Recognition Results */}
-            <div className="md:col-span-2">
+            {/* Latest Result */}
+            <Grid item xs={12} sm={8} md={9}>
               {latestLog ? (
-                <div className="space-y-3">
-                  {/* Name */}
-                  <div>
-                    <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                      👤 Nhân vật
-                    </span>
-                    <div className="text-sm font-medium mt-1"
-                      style={{
-                        color: latestLog.matched_name ? "var(--text)" : "#ff6b35",
-                        fontFamily: "monospace"
-                      }}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Typography variant="caption" color="textSecondary" display="block">👤 Nhân vật</Typography>
+                    <Typography variant="subtitle1" fontWeight="bold" color={latestLog.matched_name ? 'textPrimary' : 'error'}>
                       {latestLog.matched_name || "Không nhận ra"}
-                    </div>
-                  </div>
+                    </Typography>
+                  </Grid>
 
-                  {/* Confidence */}
-                  <div>
-                    <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                      📊 Độ tự tin
-                    </span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm font-bold"
-                        style={{
-                          color: latestLog.confidence >= 0.65 ? "#b8f550" : "#ff6b35",
-                          fontFamily: "monospace"
-                        }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Typography variant="caption" color="textSecondary" display="block">📊 Độ chính xác</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="subtitle1" fontWeight="bold" color={latestLog.confidence >= 0.65 ? 'success.main' : 'error.main'}>
                         {(latestLog.confidence * 100).toFixed(1)}%
-                      </span>
-                      <div className="flex-1 h-2 rounded-full"
-                        style={{ background: "rgba(255,255,255,0.08)" }}>
-                        <div className="h-2 rounded-full transition-all"
-                          style={{
-                            width: `${(latestLog.confidence) * 100}%`,
-                            background: latestLog.confidence >= 0.65 ? "#b8f550" : "#ff6b35",
-                          }} />
-                      </div>
-                    </div>
-                  </div>
+                      </Typography>
+                      <Box sx={{ flex: 1, ml: 1 }}>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={latestLog.confidence * 100} 
+                          color={latestLog.confidence >= 0.65 ? 'success' : 'error'}
+                          sx={{ height: 6, borderRadius: 1 }}
+                        />
+                      </Box>
+                    </Box>
+                  </Grid>
 
-                  {/* Result */}
-                  <div>
-                    <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                      ⚠️ Kết quả
-                    </span>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-sm"
-                        style={{
-                          background: latestLog.result === "GRANTED" ? "rgba(184,245,80,0.1)" : "rgba(255,107,53,0.1)",
-                          border: `1px solid ${latestLog.result === "GRANTED" ? "rgba(184,245,80,0.3)" : "rgba(255,107,53,0.3)"}`,
-                        }}>
-                        {latestLog.result === "GRANTED"
-                          ? <MdCheckCircle size={14} style={{ color: "#b8f550" }} />
-                          : <MdCancel size={14} style={{ color: "#ff6b35" }} />
-                        }
-                        <span className="text-xs font-bold"
-                          style={{
-                            fontFamily: "monospace",
-                            color: latestLog.result === "GRANTED" ? "#b8f550" : "#ff6b35",
-                          }}>
-                          {latestLog.result === "GRANTED" ? "✓ CHO VÀO" : "✗ TỪ CHỐI"}
-                        </span>
-                      </div>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Typography variant="caption" color="textSecondary" display="block">⚠️ Kết quả</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                      <Chip 
+                        icon={latestLog.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
+                        label={latestLog.result === "GRANTED" ? "CHO VÀO" : "TỪ CHỐI"} 
+                        color={latestLog.result === "GRANTED" ? "success" : "error"}
+                        variant="outlined"
+                        size="small"
+                        sx={{ fontWeight: 'bold', borderRadius: 1 }}
+                      />
                       {latestLog.is_alert && (
-                        <div className="flex items-center gap-1 px-2 py-1 rounded-sm"
-                          style={{
-                            background: "rgba(255,107,53,0.1)",
-                            border: "1px solid rgba(255,107,53,0.2)",
-                          }}>
-                          <MdWarning size={12} style={{ color: "#ff6b35" }} />
-                          <span className="text-xs" style={{ color: "#ff6b35", fontFamily: "monospace" }}>
-                            Còi
-                          </span>
-                        </div>
+                        <Chip 
+                          icon={<MdWarning />} 
+                          label="Còi" 
+                          color="error" 
+                          size="small"
+                          sx={{ fontWeight: 'bold', borderRadius: 1 }}
+                        />
                       )}
-                    </div>
-                  </div>
+                    </Box>
+                  </Grid>
 
-                  {/* Timestamp */}
-                  <div>
-                    <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                      🕐 Thời gian
-                    </span>
-                    <div className="text-xs mt-1" style={{ color: "var(--text)", fontFamily: "monospace" }}>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Typography variant="caption" color="textSecondary" display="block">🕐 Thời gian</Typography>
+                    <Typography variant="subtitle2" fontWeight="bold" mt={0.5}>
                       {new Date(latestLog.timestamp).toLocaleString("vi-VN")}
-                    </div>
-                  </div>
-                </div>
+                    </Typography>
+                  </Grid>
+                </Grid>
               ) : (
-                <div className="flex items-center justify-center h-40"
-                  style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                  <span className="text-sm">Chưa có bản ghi nào</span>
-                </div>
+                <Typography color="textSecondary">Chưa có lịch sử nhận diện.</Typography>
               )}
-            </div>
-          </div>
-        </div>
+            </Grid>
+          </Grid>
+        </CardContent>
+      </Card>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          {[
-            { label: "Tổng", value: accessLogs.length, color: "var(--text)", bg: "rgba(255,255,255,0.03)" },
-            { label: "Cho vào", value: grantedCount, color: "#b8f550", bg: "rgba(184,245,80,0.05)" },
-            { label: "Từ chối", value: deniedCount, color: "#ff6b35", bg: "rgba(255,107,53,0.05)" },
-          ].map((stat) => (
-            <div key={stat.label} className="rounded-sm p-4"
-              style={{ background: stat.bg, border: "1px solid rgba(255,255,255,0.07)" }}>
-              <div className="text-xs mb-1" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                {stat.label}
-              </div>
-              <div className="text-2xl font-bold" style={{ fontFamily: "monospace", color: stat.color }}>
-                {stat.value}
-              </div>
-            </div>
-          ))}
-        </div>
+      {/* Cảnh báo Alert */}
+      {alertCount > 0 && (
+        <Alert severity="error" icon={<MdWarning fontSize="inherit" />} sx={{ mb: 4,  fontWeight: 'bold' }}>
+          Đã phát hiện {alertCount} lần người lạ (Còi cảnh báo đã được kích hoạt).
+        </Alert>
+      )}
 
-        {/* Alert count */}
-        {alertCount > 0 && (
-          <div className="flex items-center gap-2 px-4 py-3 rounded-sm mb-6"
-            style={{
-              background: "rgba(255,107,53,0.08)",
-              border: "1px solid rgba(255,107,53,0.3)",
-            }}>
-            <MdWarning size={16} style={{ color: "#ff6b35" }} />
-            <span className="text-xs" style={{ color: "#ff6b35", fontFamily: "monospace" }}>
-              {alertCount} lần phát hiện người lạ — còi đã được kích hoạt
-            </span>
-          </div>
-        )}
+      {/* Thống kê nhỏ */}
+      <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2, mb: 4 }}>
+        {[
+          { label: "Tổng số lượt", value: accessLogs.length, color: 'text.primary', bgcolor: 'background.paper' },
+          { label: "Đã cho vào", value: grantedCount, color: 'success.main', bgcolor: 'success.light' },
+          { label: "Từ chối", value: deniedCount, color: 'error.main', bgcolor: 'error.light' },
+        ].map((stat, idx) => (
+          <Box sx={{ gridColumn: { xs: 'span 12', sm: 'span 4' } }} key={idx}>
+            <Card sx={{ border: `1px solid ${theme.palette.divider}`, boxShadow: 'none', height: '100%' }}>
+              <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                <Typography variant="caption" color="textSecondary">{stat.label}</Typography>
+                <Typography variant="h5" fontWeight="bold" sx={{ color: stat.color }}>{stat.value}</Typography>
+              </CardContent>
+            </Card>
+          </Box>
+        ))}
+      </Box>
 
-        {/* Filters */}
-        <div className="flex items-center gap-3 mb-4">
-          <MdFilterList size={16} style={{ color: "var(--muted)" }} />
-          <div className="flex gap-1">
-            {["ALL", "GRANTED", "DENIED"].map((f) => (
-              <button key={f} onClick={() => setFilter(f)}
-                className="px-3 py-1 rounded-sm text-xs transition-all"
-                style={{
-                  fontFamily: "monospace",
-                  background: filter === f ? "rgba(255,255,255,0.08)" : "transparent",
-                  color: filter === f
-                    ? f === "GRANTED" ? "#b8f550" : f === "DENIED" ? "#ff6b35" : "var(--text)"
-                    : "var(--muted)",
-                  border: `1px solid ${filter === f ? "rgba(255,255,255,0.15)" : "transparent"}`,
-                  cursor: "pointer",
-                }}>
-                {f === "ALL" ? "Tất cả" : f === "GRANTED" ? "Cho vào" : "Từ chối"}
-              </button>
-            ))}
-          </div>
-
-          {/* Date filter */}
-          <input type="date"
+      {/* Bảng Logs */}
+      <Card sx={{ border: `1px solid ${theme.palette.divider}`, boxShadow: 'none' }}>
+        {/* Bộ lọc */}
+        <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${theme.palette.divider}`, flexWrap: 'wrap', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <MdFilterList size={20} color={theme.palette.text.secondary} />
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              {[
+                { key: "ALL", label: "Tất cả", color: 'primary' },
+                { key: "GRANTED", label: "Cho vào", color: 'success' },
+                { key: "DENIED", label: "Từ chối", color: 'error' }
+              ].map((f) => (
+                <Button
+                  key={f.key}
+                  variant={filter === f.key ? "contained" : "outlined"}
+                  color={f.color}
+                  size="small"
+                  onClick={() => setFilter(f.key)}
+                  disableElevation
+                  sx={{ fontWeight: filter === f.key ? 'bold' : 'normal' }}
+                >
+                  {f.label}
+                </Button>
+              ))}
+            </Box>
+          </Box>
+          <TextField
+            type="date"
+            size="small"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
-            className="ml-auto px-3 py-1 rounded-sm text-xs outline-none"
-            style={{
-              background: "rgba(255,255,255,0.05)",
-              border: "1px solid rgba(255,255,255,0.1)",
-              color: "var(--text)",
-              fontFamily: "monospace",
-              colorScheme: "dark",
-            }} />
-        </div>
+            sx={{ '& .MuiOutlinedInput-root': {  } }}
+          />
+        </Box>
 
-        {/* Table */}
-        <div className="rounded-sm overflow-hidden"
-          style={{ border: "1px solid rgba(255,255,255,0.07)" }}>
+        {/* Table Container */}
+        <TableContainer>
+          <Table sx={{ minWidth: 650 }} aria-label="access logs table">
+            <TableHead sx={{ bgcolor: 'background.default' }}>
+              <TableRow>
+                <TableCell width={80}><strong>Ảnh</strong></TableCell>
+                <TableCell><strong>Người</strong></TableCell>
+                <TableCell><strong>Độ chính xác</strong></TableCell>
+                <TableCell><strong>Kết quả</strong></TableCell>
+                <TableCell align="right"><strong>Thời gian</strong></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {filtered.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} align="center" sx={{ py: 6 }}>
+                    <Typography color="textSecondary">Không có dữ liệu phù hợp.</Typography>
+                  </TableCell>
+                </TableRow>
+              )}
+              {filtered.map((log) => (
+                <TableRow 
+                  key={log.id}
+                  sx={{ '&:hover': { bgcolor: 'action.hover' } }}
+                >
+                  {/* Ảnh */}
+                  <TableCell>
+                    {log.image_path ? (
+                      <Box 
+                        component="img"
+                        src={`/api/access/image/${log.id}`}
+                        alt="face"
+                        sx={{ width: 40, height: 40, borderRadius: 1, objectFit: 'cover', border: `1px solid ${theme.palette.divider}` }}
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                          e.target.nextElementSibling.style.display = "flex";
+                        }}
+                      />
+                    ) : null}
+                    <Box 
+                      sx={{ 
+                        width: 40, height: 40, borderRadius: 1, bgcolor: 'action.selected', 
+                        display: log.image_path ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: 'text.disabled'
+                      }}
+                    >
+                      ?
+                    </Box>
+                  </TableCell>
 
-          {/* Table header */}
-          <div className="grid grid-cols-5 px-4 py-2"
-            style={{
-              background: "rgba(255,255,255,0.03)",
-              borderBottom: "1px solid rgba(255,255,255,0.07)",
-            }}>
-            {["Ảnh", "Người", "Confidence", "Kết quả", "Thời gian"].map((h) => (
-              <div key={h} className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                {h}
-              </div>
-            ))}
-          </div>
+                  {/* Người */}
+                  <TableCell>
+                    <Typography variant="body2" fontWeight="bold" color={log.matched_name ? 'textPrimary' : 'error'}>
+                      {log.matched_name || "Không nhận ra"}
+                    </Typography>
+                    {log.is_alert && (
+                      <Typography variant="caption" color="error" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <MdWarning /> Đã hú còi
+                      </Typography>
+                    )}
+                  </TableCell>
 
-          {/* Rows */}
-          {filtered.length === 0 && (
-            <div className="text-sm text-center py-12" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-              Không có dữ liệu
-            </div>
-          )}
+                  {/* Độ chính xác */}
+                  <TableCell>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography variant="body2" fontWeight="bold" color={log.action === 'granted' ? 'success.main' : 'error.main'}>
+                        {log.confidence ? `${(log.confidence * 100).toFixed(1)}%` : "--"}
+                      </Typography>
+                      <Box sx={{ width: 60 }}>
+                        <LinearProgress 
+                          variant="determinate" 
+                          value={log.confidence ? log.confidence * 100 : 0} 
+                          color={log.action === 'granted' ? 'success' : 'error'}
+                          sx={{ height: 4, borderRadius: 1 }}
+                        />
+                      </Box>
+                    </Box>
+                  </TableCell>
 
-          {filtered.map((log) => (
-            <div key={log.id}
-              className="grid grid-cols-5 items-center px-4 py-3 transition-all hover:bg-white/5"
-              style={{
-                borderBottom: "1px solid rgba(255,255,255,0.04)",
-                background: log.is_alert ? "rgba(255,107,53,0.04)" : "transparent",
-              }}>
+                  {/* Kết quả */}
+                  <TableCell>
+                    <Chip 
+                      icon={log.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
+                      label={log.result === "GRANTED" ? "Cho vào" : "Từ chối"} 
+                      color={log.result === "GRANTED" ? "success" : "error"}
+                      variant="outlined"
+                      size="small"
+                      sx={{ borderRadius: 1, fontWeight: 'bold' }}
+                    />
+                  </TableCell>
 
-              {/* Ảnh */}
-              <div>
-                {log.image_path ? (
-                  <img src={`/api/access/image/${log.id}`}
-                    alt="face"
-                    className="w-10 h-10 rounded-sm object-cover"
-                    style={{ border: "1px solid rgba(255,255,255,0.1)" }}
-                    onError={(e) => {
-                      e.target.style.display = "none";
-                      e.target.nextElementSibling.style.display = "flex";
-                    }} />
-                ) : null}
-                <div className="w-10 h-10 rounded-sm flex items-center justify-center"
-                  style={{ background: "rgba(255,255,255,0.05)", color: "var(--muted)", display: log.image_path ? "none" : "flex" }}>
-                  ?
-                </div>
-              </div>
-
-              {/* Người */}
-              <div>
-                <div className="text-sm" style={{ color: log.matched_name ? "var(--text)" : "var(--muted)" }}>
-                  {log.matched_name || "Không nhận ra"}
-                </div>
-                {log.is_alert && (
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <MdWarning size={10} style={{ color: "#ff6b35" }} />
-                    <span className="text-xs" style={{ color: "#ff6b35", fontFamily: "monospace" }}>
-                      Còi kích hoạt
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {/* Confidence */}
-              <div>
-                <div className="text-sm font-medium"
-                  style={{
-                    fontFamily: "monospace",
-                    color: log.confidence >= 0.65 ? "#b8f550" : "#ff6b35",
-                  }}>
-                  {log.confidence ? `${(log.confidence * 100).toFixed(1)}%` : "--"}
-                </div>
-                {/* Progress bar */}
-                <div className="mt-1 h-1 rounded-full w-20"
-                  style={{ background: "rgba(255,255,255,0.08)" }}>
-                  <div className="h-1 rounded-full transition-all"
-                    style={{
-                      width: `${(log.confidence || 0) * 100}%`,
-                      background: log.confidence >= 0.65 ? "#b8f550" : "#ff6b35",
-                    }} />
-                </div>
-              </div>
-
-              {/* Kết quả */}
-              <div>
-                <div className="flex items-center gap-1.5 px-2 py-1 rounded-sm self-start w-fit"
-                  style={{
-                    background: log.result === "GRANTED" ? "rgba(184,245,80,0.1)" : "rgba(255,107,53,0.1)",
-                    border: `1px solid ${log.result === "GRANTED" ? "rgba(184,245,80,0.25)" : "rgba(255,107,53,0.25)"}`,
-                  }}>
-                  {log.result === "GRANTED"
-                    ? <MdCheckCircle size={12} style={{ color: "#b8f550" }} />
-                    : <MdCancel size={12} style={{ color: "#ff6b35" }} />
-                  }
-                  <span className="text-xs font-medium"
-                    style={{
-                      fontFamily: "monospace",
-                      color: log.result === "GRANTED" ? "#b8f550" : "#ff6b35",
-                    }}>
-                    {log.result === "GRANTED" ? "Cho vào" : "Từ chối"}
-                  </span>
-                </div>
-              </div>
-
-              {/* Thời gian */}
-              <div className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                <div>{new Date(log.timestamp).toLocaleDateString("vi-VN")}</div>
-                <div>{new Date(log.timestamp).toLocaleTimeString("vi-VN")}</div>
-              </div>
-
-            </div>
-          ))}
-        </div>
-
-      </div>
-    </div>
+                  {/* Thời gian */}
+                  <TableCell align="right">
+                    <Typography variant="body2" color="textPrimary">
+                      {new Date(log.timestamp).toLocaleTimeString("vi-VN")}
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      {new Date(log.timestamp).toLocaleDateString("vi-VN")}
+                    </Typography>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      </Card>
+    </Box>
   );
 }
 

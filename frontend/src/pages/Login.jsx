@@ -1,197 +1,270 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { MdHome, MdLock, MdPerson, MdArrowForward } from "react-icons/md";
+import { MdHome } from "react-icons/md";
 import useStore from "../store";
+import { 
+  Box, 
+  Container, 
+  Grid, 
+  Typography, 
+  Card, 
+  CardContent, 
+  TextField, 
+  Button, 
+  Divider, 
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  Alert
+} from "@mui/material";
+import { Close as CloseIcon } from "@mui/icons-material";
 
 function Login() {
   const { user, login, register } = useStore();
   const navigate = useNavigate();
 
-  const [isRegister, setIsRegister] = useState(false);
+  // Login state
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [name, setName] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState("");
+  const [loginLoading, setLoginLoading] = useState(false);
 
-  // Nếu đã đăng nhập thì redirect về dashboard
+  // Register state (Modal)
+  const [openRegister, setOpenRegister] = useState(false);
+  const [regName, setRegName] = useState("");
+  const [regUsername, setRegUsername] = useState("");
+  const [regPassword, setRegPassword] = useState("");
+  const [regError, setRegError] = useState("");
+  const [regLoading, setRegLoading] = useState(false);
+
   useEffect(() => {
     if (user) navigate("/dashboard");
   }, [user, navigate]);
 
-  const handleSubmit = async (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-    setLoading(true);
+    setLoginError("");
+    setLoginLoading(true);
 
     try {
-      if (isRegister) {
-        await register(username, password, name);
-        // Sau khi đăng ký thành công thì tự động login luôn hoặc chuyển sang tab login
-        await login(username, password);
-      } else {
-        await login(username, password);
-      }
+      await login(username, password);
       navigate("/dashboard");
     } catch (err) {
-      setError(err.response?.data?.error || "Đã xảy ra lỗi, vui lòng thử lại.");
+      setLoginError(err.response?.data?.error || "Sai tên đăng nhập hoặc mật khẩu.");
     } finally {
-      setLoading(false);
+      setLoginLoading(false);
     }
   };
 
+  const handleRegisterSubmit = async (e) => {
+    e.preventDefault();
+    setRegError("");
+    setRegLoading(true);
+
+    try {
+      await register(regUsername, regPassword, regName);
+      await login(regUsername, regPassword);
+      setOpenRegister(false);
+      navigate("/dashboard");
+    } catch (err) {
+      setRegError(err.response?.data?.error || "Đăng ký thất bại, vui lòng thử lại.");
+    } finally {
+      setRegLoading(false);
+    }
+  };
+
+  const closeRegisterModal = () => {
+    if (regLoading) return;
+    setOpenRegister(false);
+    setRegError("");
+    setRegName("");
+    setRegUsername("");
+    setRegPassword("");
+  };
+
   return (
-    <div className="min-h-screen flex items-center justify-center relative overflow-hidden"
-         style={{ background: "var(--bg)" }}>
+    <Box sx={{ 
+      minHeight: '100vh', 
+      bgcolor: 'background.default', 
+      display: 'flex', 
+      alignItems: 'center', 
+      pt: { xs: 4, md: 0 },
+      pb: { xs: 4, md: 0 } 
+    }}>
+      <Container maxWidth="sm" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+        {/* Phần Logo và Slogan */}
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
+            <MdHome size={56} style={{ color: '#1877F2' }} />
+            <Typography 
+              variant="h3" 
+              fontWeight="bold" 
+              color="primary" 
+              sx={{ ml: 1, letterSpacing: '-1px' }}
+            >
+              SmartHome
+            </Typography>
+          </Box>
+          <Typography variant="h6" sx={{ lineHeight: 1.4, color: 'text.primary', fontWeight: 400 }}>
+            SmartHome giúp bạn kết nối và quản lý mọi thiết bị.
+          </Typography>
+        </Box>
 
-      {/* Grid background */}
-      <div className="fixed inset-0 pointer-events-none" style={{
-        backgroundImage: `
-          linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)
-        `,
-        backgroundSize: "40px 40px"
-      }} />
+        {/* Phần Form Đăng nhập */}
+        <Box sx={{ width: '100%', maxWidth: 400 }}>
+          <Card sx={{ 
+            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+            border: 'none' }}>
+            <CardContent sx={{ p: { xs: 2.5, sm: 3 }, '&:last-child': { pb: 3 } }}>
+              <form onSubmit={handleLoginSubmit}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <TextField
+                    fullWidth
+                    required
+                    placeholder="Tên đăng nhập"
+                    variant="outlined"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                  <TextField
+                    fullWidth
+                    required
+                    type="password"
+                    placeholder="Mật khẩu"
+                    variant="outlined"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                  />
+                  
+                  {loginError && (
+                    <Typography variant="body2" color="error" align="center">
+                      {loginError}
+                    </Typography>
+                  )}
 
-      {/* Glow effects */}
-      <div className="fixed pointer-events-none" style={{
-        width: 600, height: 600, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(184,245,80,0.06) 0%, transparent 70%)",
-        top: -200, right: -100,
-      }} />
-      <div className="fixed pointer-events-none" style={{
-        width: 400, height: 400, borderRadius: "50%",
-        background: "radial-gradient(circle, rgba(2,132,199,0.05) 0%, transparent 70%)",
-        bottom: -100, left: -100,
-      }} />
+                  <Button 
+                    type="submit" 
+                    variant="contained" 
+                    color="primary" 
+                    size="large"
+                    disabled={loginLoading}
+                    fullWidth
+                    sx={{ py: 1.2, fontSize: '1.1rem', fontWeight: 'bold' }}
+                  >
+                    {loginLoading ? "Đang đăng nhập..." : "Đăng nhập"}
+                  </Button>
 
-      {/* Card */}
-      <div className="relative z-10 w-full max-w-md mx-4 rounded-sm animate-fade-in"
-           style={{
-             background: "var(--surface)",
-             border: "1px solid rgba(255,255,255,0.07)",
-             padding: "48px 40px",
-             boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)"
-           }}>
+                  <Typography variant="body2" color="primary" align="center" sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
+                    Quên mật khẩu?
+                  </Typography>
 
-        {/* Badge */}
-        <div className="inline-block mb-6 px-3 py-1 rounded-sm text-xs tracking-widest uppercase"
-             style={{
-               fontFamily: "monospace",
-               color: "var(--accent)",
-               background: "rgba(184,245,80,0.1)",
-               border: "1px solid rgba(184,245,80,0.25)",
-             }}>
-          {isRegister ? "User Registration" : "System Access"}
-        </div>
+                  <Divider sx={{ my: 1.5 }} />
 
-        {/* Title */}
-        <div className="flex items-center gap-3 mb-2">
-          <MdHome size={28} style={{ color: "var(--accent)" }} />
-          <h1 className="text-2xl font-bold tracking-tight"
-              style={{ fontFamily: "monospace", color: "var(--text)" }}>
-            SmartHome
-          </h1>
-        </div>
-        <p className="mb-8 text-sm" style={{ color: "var(--muted)" }}>
-          {isRegister 
-            ? "Tạo tài khoản mới để bắt đầu quản lý ngôi nhà của bạn." 
-            : "Đăng nhập bằng tài khoản nội bộ để tiếp tục."}
-        </p>
+                  <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                    <Button 
+                      variant="contained" 
+                      color="secondary" 
+                      size="large"
+                      onClick={() => setOpenRegister(true)}
+                      sx={{ 
+                        py: 1.2, 
+                        px: 4,
+                        fontWeight: 'bold', 
+                        fontSize: '1rem',
+                        color: '#fff',
+                        textTransform: 'none'
+                      }}
+                    >
+                      Tạo tài khoản mới
+                    </Button>
+                  </Box>
+                </Box>
+              </form>
+            </CardContent>
+          </Card>
+          <Typography variant="caption" display="block" align="center" color="textSecondary" sx={{ mt: 3 }}>
+            <b>SmartHome</b> dành riêng cho hệ thống mạng nội bộ.
+          </Typography>
+        </Box>
+      </Container>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {isRegister && (
-            <div className="relative">
-              <MdPerson className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
-              <input
-                type="text"
+      {/* Modal Đăng Ký */}
+      <Dialog 
+        open={openRegister} 
+        onClose={closeRegisterModal}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{ sx: {  } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h5" fontWeight="bold">Đăng ký</Typography>
+            <Typography variant="body2" color="textSecondary">Nhanh chóng và dễ dàng.</Typography>
+          </Box>
+          <IconButton onClick={closeRegisterModal} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <Divider />
+        <DialogContent>
+          <form id="register-form" onSubmit={handleRegisterSubmit}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <TextField
+                fullWidth
+                required
                 placeholder="Họ và tên"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full py-3 pl-10 pr-4 rounded-sm text-sm outline-none transition-all"
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid rgba(255,255,255,0.07)",
-                  color: "var(--text)",
-                }}
+                variant="outlined"
+                size="small"
+                value={regName}
+                onChange={(e) => setRegName(e.target.value)}
               />
-            </div>
-          )}
-
-          <div className="relative">
-            <MdPerson className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
-            <input
-              type="text"
-              required
-              placeholder="Tên đăng nhập"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full py-3 pl-10 pr-4 rounded-sm text-sm outline-none transition-all focus:border-accent"
-              style={{
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.07)",
-                color: "var(--text)",
-              }}
-            />
-          </div>
-
-          <div className="relative">
-            <MdLock className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--muted)" }} />
-            <input
-              type="password"
-              required
-              placeholder="Mật khẩu"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full py-3 pl-10 pr-4 rounded-sm text-sm outline-none transition-all focus:border-accent"
-              style={{
-                background: "rgba(255,255,255,0.03)",
-                border: "1px solid rgba(255,255,255,0.07)",
-                color: "var(--text)",
-              }}
-            />
-          </div>
-
-          {error && (
-            <p className="text-xs text-red-400 font-medium" style={{ fontFamily: "monospace" }}>
-              ⚠️ {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="flex items-center justify-center gap-2 w-full py-3 px-5 rounded-sm font-bold text-xs tracking-widest uppercase transition-all hover:opacity-90 active:scale-[0.98] disabled:opacity-50"
-            style={{
-              background: "var(--accent)",
-              color: "#0d0f0f",
-              border: "none",
+              <TextField
+                fullWidth
+                required
+                placeholder="Tên đăng nhập"
+                variant="outlined"
+                size="small"
+                value={regUsername}
+                onChange={(e) => setRegUsername(e.target.value)}
+              />
+              <TextField
+                fullWidth
+                required
+                type="password"
+                placeholder="Mật khẩu mới"
+                variant="outlined"
+                size="small"
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+              />
+              {regError && (
+                <Alert severity="error" sx={{ mt: 1 }}>{regError}</Alert>
+              )}
+            </Box>
+          </form>
+        </DialogContent>
+        <DialogActions sx={{ justifyContent: 'center', pb: 3, pt: 1 }}>
+          <Button 
+            type="submit" 
+            form="register-form"
+            variant="contained" 
+            color="secondary" 
+            disabled={regLoading}
+            sx={{ 
+              width: '50%', 
+              fontWeight: 'bold', 
+              fontSize: '1rem', 
+              color: '#fff',
+              textTransform: 'none'
             }}
           >
-            {loading ? "Processing..." : isRegister ? "Tạo tài khoản" : "Đăng nhập"}
-            {!loading && <MdArrowForward size={16} />}
-          </button>
-        </form>
-
-        <div className="mt-8 pt-6 text-center" style={{ borderTop: "1px solid rgba(255,255,255,0.07)" }}>
-          <button
-            onClick={() => {
-              setIsRegister(!isRegister);
-              setError("");
-            }}
-            className="text-xs transition-all hover:opacity-80"
-            style={{ color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer", fontFamily: "monospace" }}
-          >
-            {isRegister ? "Đã có tài khoản? Đăng nhập ngay" : "Chưa có tài khoản? Đăng ký tại đây"}
-          </button>
-        </div>
-
-        <p className="mt-6 text-center text-[10px] uppercase tracking-[0.2em]" style={{ color: "var(--muted)", opacity: 0.5, fontFamily: "monospace" }}>
-          Local Network Access Only
-        </p>
-      </div>
-    </div>
+            {regLoading ? "Đang xử lý..." : "Đăng ký"}
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
 

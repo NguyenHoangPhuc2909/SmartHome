@@ -1,21 +1,21 @@
-import { MdLightbulb, MdLightbulbOutline } from "react-icons/md";
+import { MdLightbulb, MdLightbulbOutline, MdLock, MdLockOpen } from "react-icons/md";
 import { PiFan } from "react-icons/pi";
 import { BsBellFill, BsBell } from "react-icons/bs";
-import { MdLock, MdLockOpen } from "react-icons/md";
+import { Card, CardContent, Typography, Box, Chip, Button } from '@mui/material';
 
 const typeConfig = {
-  light: { iconOn: MdLightbulb,     iconOff: MdLightbulbOutline, color: "#ffd93d" },
-  fan:   { iconOn: PiFan,           iconOff: PiFan,              color: "#4ecdc4" },
-  alarm: { iconOn: BsBellFill,      iconOff: BsBell,             color: "#ff6b35" },
-  door:  { iconOn: MdLockOpen,      iconOff: MdLock,             color: "#b8f550" },
+  light: { iconOn: MdLightbulb,     iconOff: MdLightbulbOutline, color: "#f59e0b" }, // amber-500
+  fan:   { iconOn: PiFan,           iconOff: PiFan,              color: "#10b981" }, // emerald-500
+  alarm: { iconOn: BsBellFill,      iconOff: BsBell,             color: "#ef4444" }, // red-500
+  door:  { iconOn: MdLockOpen,      iconOff: MdLock,             color: "#3b82f6" }, // blue-500
 };
 
 const modeColor = {
-  Manual:   { bg: "rgba(255,255,255,0.08)", color: "#f0f0ec" },
-  AI:       { bg: "rgba(184,245,80,0.12)",  color: "#b8f550" },
-  Schedule: { bg: "rgba(78,205,196,0.12)",  color: "#4ecdc4" },
-  Alert:    { bg: "rgba(255,107,53,0.12)",  color: "#ff6b35" },
-  Auto:     { bg: "rgba(184,245,80,0.12)",  color: "#b8f550" },
+  Manual:   "default",
+  AI:       "primary",
+  Schedule: "secondary",
+  Alert:    "error",
+  Auto:     "primary",
 };
 
 const roomLabel = {
@@ -26,63 +26,77 @@ const roomLabel = {
   entrance:    "Cửa chính",
 };
 
+const modeLabel = {
+  Manual:   "Thủ công",
+  AI:       "Trí tuệ nhân tạo",
+  Schedule: "Lịch trình",
+  Alert:    "Cảnh báo",
+  Auto:     "Tự động",
+};
+
 function DeviceCard({ device, onToggle, aiMode }) {
   const config   = typeConfig[device.type] || typeConfig.light;
   const isOn     = device.status === 1;
   const Icon     = isOn ? config.iconOn : config.iconOff;
-  const modeCfg  = modeColor[device.mode] || modeColor.Manual;
+  const modeChipColor = modeColor[device.mode] || "default";
   const disabled = aiMode && device.type !== "door";
 
   return (
-    <div className="rounded-sm p-4 flex flex-col gap-3 transition-all"
-         style={{
-           background: isOn ? "rgba(255,255,255,0.05)" : "rgba(255,255,255,0.02)",
-           border: `1px solid ${isOn ? "rgba(255,255,255,0.15)" : "rgba(255,255,255,0.07)"}`,
-           opacity: disabled ? 0.6 : 1,
-         }}>
+    <Card 
+      sx={{ 
+        height: '100%',
+        opacity: disabled ? 0.7 : 1,
+        transition: '0.3s',
+        border: isOn ? `1px solid ${config.color}` : '1px solid #cbd5e1',
+        bgcolor: isOn ? `${config.color}08` : 'background.paper',
+        '&:hover': {
+          transform: disabled ? 'none' : 'translateY(-2px)',
+          boxShadow: disabled ? 0 : 2,
+        }
+      }}
+    >
+      <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Icon size={24} style={{ color: isOn ? config.color : '#94a3b8' }} />
+          <Chip 
+            label={modeLabel[device.mode || "Manual"] || device.mode} 
+            size="small" 
+            color={modeChipColor}
+            variant="outlined"
+            sx={{ fontWeight: 'bold', fontSize: '0.7rem' }}
+          />
+        </Box>
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <Icon size={24} style={{ color: isOn ? config.color : "var(--muted)" }} />
-        {/* Mode badge */}
-        <span className="text-xs px-2 py-0.5 rounded-sm"
-              style={{
-                fontFamily: "monospace",
-                background: modeCfg.bg,
-                color:      modeCfg.color,
-                border:     `1px solid ${modeCfg.color}33`,
-              }}>
-          {device.mode || "Manual"}
-        </span>
-      </div>
+        {/* Name + room */}
+        <Box sx={{ mb: 2, minHeight: 45 }}>
+          <Typography variant="body2" fontWeight="bold" noWrap>
+            {device.name}
+          </Typography>
+          <Typography variant="caption" color="textSecondary" display="block">
+            {roomLabel[device.room] || device.room}
+          </Typography>
+        </Box>
 
-      {/* Name + room */}
-      <div>
-        <div className="text-sm font-medium" style={{ color: "var(--text)" }}>
-          {device.name}
-        </div>
-        <div className="text-xs mt-0.5" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-          {roomLabel[device.room] || device.room}
-        </div>
-      </div>
-
-      {/* Toggle button */}
-      <button
-        onClick={() => !disabled && onToggle(device.id, device.status)}
-        disabled={disabled}
-        className="w-full py-2 rounded-sm text-xs font-medium tracking-wide transition-all"
-        style={{
-          fontFamily: "monospace",
-          background: isOn
-            ? disabled ? "rgba(255,255,255,0.05)" : `${config.color}22`
-            : "rgba(255,255,255,0.05)",
-          color:   isOn ? config.color : "var(--muted)",
-          border:  `1px solid ${isOn ? `${config.color}44` : "rgba(255,255,255,0.07)"}`,
-          cursor:  disabled ? "not-allowed" : "pointer",
-        }}>
-        {isOn ? "● BẬT" : "○ TẮT"}
-      </button>
-    </div>
+        {/* Toggle button */}
+        <Button
+          fullWidth
+          variant={isOn ? "contained" : "outlined"}
+          disabled={disabled}
+          onClick={() => !disabled && onToggle(device.id, device.status)}
+          sx={{ 
+            bgcolor: isOn && !disabled ? config.color : undefined,
+            color: isOn && !disabled ? '#fff' : (isOn && disabled ? 'action.disabled' : 'text.primary'),
+            borderColor: isOn ? 'transparent' : 'divider',
+            '&:hover': {
+              bgcolor: isOn ? `${config.color}dd` : 'action.hover',
+            }
+          }}
+        >
+          {isOn ? "BẬT" : "TẮT"}
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
