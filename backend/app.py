@@ -1,5 +1,4 @@
-from flask import Flask
-from flask_dance.contrib.google import make_google_blueprint
+from flask import Flask, request, jsonify
 from flask_apscheduler import APScheduler
 from models import db
 from config import Config
@@ -8,20 +7,25 @@ import os
 app = Flask(__name__)
 app.config.from_object(Config)
 
-os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
-os.environ["OAUTHLIB_RELAX_TOKEN_SCOPE"] = "1"
-
 # ── Database ───────────────────────────────────────────────────────────────
 db.init_app(app)
 
-# ── Google OAuth ───────────────────────────────────────────────────────────
-google_bp = make_google_blueprint(
-    client_id     = Config.GOOGLE_CLIENT_ID,
-    client_secret = Config.GOOGLE_CLIENT_SECRET,
-    scope         = ["profile", "email"],
-    redirect_to   = "auth.after_login",
-)
-app.register_blueprint(google_bp, url_prefix="/login")
+# ── IP Guard Middleware ────────────────────────────────────────────────────
+@app.before_request
+def limit_remote_addr():
+    """Chỉ cho phép truy cập từ mạng nội bộ (Local Network)"""
+    client_ip = request.remote_addr
+    
+    # Cho phép localhost (cả IPv4 và IPv6) và dải IP nội bộ phổ biến
+    is_local = (
+        client_ip in ["127.0.0.1", "::1"] or 
+        client_ip.startswith("192.168.") or 
+        client_ip.startswith("10.") or
+        client_ip.startswith("172.16.")
+    )
+    
+    if not is_local:
+        return jsonify({"error": f"Access Denied: Your IP ({client_ip}) is not on the local network."}), 403
 
 # ── Routes ─────────────────────────────────────────────────────────────────
 from routes.auth     import auth_bp
@@ -46,13 +50,17 @@ def run_schedules():
     with app.app_context():
         check_schedules()
 
-scheduler.start()
+# Tối ưu hóa: Ngăn scheduler khởi chạy 2 lần khi debug=True
+if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
+    scheduler.start()
+    print("[INFO] APScheduler đã khởi động thành công!")
 
 # ── Init folders & DB ──────────────────────────────────────────────────────
 with app.app_context():
     os.makedirs(Config.CAPTURED_FACES_DIR, exist_ok=True)
     os.makedirs(Config.RECOG_IMAGES_DIR,   exist_ok=True)
     db.create_all()
+    print("[INFO] Khởi tạo các thư mục lưu trữ dữ liệu ảnh và Database thành công!")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

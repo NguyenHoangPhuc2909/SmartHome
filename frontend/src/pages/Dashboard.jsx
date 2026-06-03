@@ -1,10 +1,35 @@
 import { useEffect, useState, useRef } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, CartesianGrid } from "recharts";
 import axios from "axios";
+import {
+  Box,
+  Typography,
+  Button,
+  Switch,
+  FormControlLabel,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  IconButton,
+  CircularProgress,
+  Paper,
+  Card,
+  LinearProgress,
+  useTheme,
+  Alert
+} from "@mui/material";
+import {
+  Settings as SettingsIcon,
+  Close as CloseIcon,
+  CloudUpload as UploadIcon,
+  Storage as StorageIcon,
+  CheckCircle as SuccessIcon,
+  Error as ErrorIcon
+} from "@mui/icons-material";
 import useStore from "../store";
 import SensorCard from "../components/SensorCard";
 import DeviceCard from "../components/DeviceCard";
-import AlertBanner from "../components/AlertBanner";
 
 const roomLabel = {
   living_room: "Phòng khách",
@@ -15,18 +40,17 @@ const roomLabel = {
 };
 
 // ── Trạng thái của modal train ────────────────────────────────────────────────
-// idle | loading | success | error
 const TRAIN_STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success", ERROR: "error" };
 
 function Dashboard() {
+  const theme = useTheme();
   const { devices, sensors, aiMode, accessLogs, fetchDevices, fetchAccessLogs, toggleDevice, setAiMode } = useStore();
   const [chartData, setChartData] = useState([]);
-  const [dismissedAlert, setDismissedAlert] = useState(false);
 
   // Modal train AI
   const [showTrainModal, setShowTrainModal] = useState(false);
   const [trainStatus, setTrainStatus] = useState(TRAIN_STATUS.IDLE);
-  const [trainLines, setTrainLines] = useState([]);  // mảng từng dòng kết quả
+  const [trainLines, setTrainLines] = useState([]);
   const [trainError, setTrainError] = useState("");
   const fileInputRef = useRef(null);
 
@@ -49,14 +73,12 @@ function Dashboard() {
     });
     setChartData((prev) => {
       const next = [...prev, { time: now, temp: sensors.temp, humi: sensors.humi, light: sensors.light, gas: sensors.gas }];
-      return next.slice(-20);
+      return next.slice(-5);
     });
   }, [sensors]);
 
-  // ── Reset trạng thái khi đóng modal ─────────────────────────────────────────
   const closeModal = () => {
     setShowTrainModal(false);
-    // Delay nhỏ để animation đóng modal xong mới reset state
     setTimeout(() => {
       setTrainStatus(TRAIN_STATUS.IDLE);
       setTrainLines([]);
@@ -64,9 +86,7 @@ function Dashboard() {
     }, 300);
   };
 
-  // ── Xử lý kết quả từ backend ─────────────────────────────────────────────────
   const handleTrainSuccess = (message) => {
-    // message từ backend là chuỗi nhiều dòng, tách ra thành mảng
     const lines = message.split("\n").filter(Boolean);
     setTrainLines(lines);
     setTrainStatus(TRAIN_STATUS.SUCCESS);
@@ -78,11 +98,10 @@ function Dashboard() {
     setTrainStatus(TRAIN_STATUS.ERROR);
   };
 
-  // ── Upload file để train ──────────────────────────────────────────────────────
   const handleFileUpload = async (event) => {
     const file = event.target.files[0];
     if (!file) return;
-    event.target.value = null; // reset để có thể chọn lại file cùng tên
+    event.target.value = null;
 
     setTrainStatus(TRAIN_STATUS.LOADING);
     setTrainLines([]);
@@ -99,7 +118,6 @@ function Dashboard() {
     }
   };
 
-  // ── Train từ database ─────────────────────────────────────────────────────────
   const handleTrainFromDB = async () => {
     setTrainStatus(TRAIN_STATUS.LOADING);
     setTrainLines([]);
@@ -113,119 +131,102 @@ function Dashboard() {
     }
   };
 
-  // ── Nhóm thiết bị theo phòng ──────────────────────────────────────────────────
   const activeAlerts = accessLogs.filter((l) => l.is_alert);
   const devicesByRoom = devices.reduce((acc, d) => {
-    // Ẩn các cảm biến (sensor) khỏi danh sách thiết bị điều khiển ON/OFF
     if (d.type === "sensor") return acc;
-    
     if (!acc[d.room]) acc[d.room] = [];
     acc[d.room].push(d);
     return acc;
   }, {});
 
   return (
-    <div className="pt-14 min-h-screen" style={{ background: "var(--bg)" }}>
-      <div className="max-w-7xl mx-auto px-6 py-8">
+    <Box sx={{ width: '100%' }}>
+      {/* ── Header ─────────────────────────────────────────────────────── */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4, flexWrap: 'wrap', gap: 2 }}>
+        <Box>
+          <Typography variant="h4" fontWeight="bold">
+            Tổng quan
+          </Typography>
+          <Typography variant="body2" color="textSecondary">
+            Tổng quan hệ thống nhà thông minh
+          </Typography>
+        </Box>
 
-        {/* Alert banner */}
-        {!dismissedAlert && activeAlerts.length > 0 && (
-          <AlertBanner alerts={activeAlerts} onDismiss={() => setDismissedAlert(true)} />
-        )}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <Button
+            variant="outlined"
+            startIcon={<SettingsIcon />}
+            onClick={() => setShowTrainModal(true)}
+            sx={{ fontWeight: 'bold' }}
+          >
+            Huấn luyện AI
+          </Button>
 
-        {/* ── Header ─────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "monospace", color: "var(--text)" }}>
-              Dashboard
-            </h1>
-            <p className="text-sm mt-1" style={{ color: "var(--muted)" }}>
-              Tổng quan hệ thống nhà thông minh
-            </p>
-          </div>
+          <Box sx={{ width: '1px', height: 24, bgcolor: 'divider' }} />
 
-          <div className="flex items-center gap-6">
-            {/* Nút mở modal train */}
-            <button
-              onClick={() => setShowTrainModal(true)}
-              className="btn-secondary flex items-center gap-2"
-              style={{ fontSize: "12px" }}
-            >
-              <span className="text-xs tracking-widest uppercase font-bold">⚙️ Train AI</span>
-            </button>
-
-            <div style={{ width: "1px", height: "24px", background: "var(--border)" }} />
-
-            {/* AI Mode toggle */}
-            <div className="flex items-center gap-3">
-              <span className="text-xs tracking-widest uppercase"
-                style={{ fontFamily: "monospace", color: "var(--muted)" }}>
-                AI Mode
-              </span>
-              <button
-                onClick={async () => {
+          <FormControlLabel
+            control={
+              <Switch
+                checked={aiMode}
+                onChange={async () => {
                   const newMode = !aiMode;
                   setAiMode(newMode);
-                  // Khi BẬT AI mode → gọi API reset tất cả thiết bị Manual về AI
                   if (newMode) {
                     try {
                       await axios.post("/api/devices/reset-to-ai");
-                      fetchDevices(); // Refresh lại UI
+                      fetchDevices();
                     } catch (err) {
                       console.error("Không thể reset về AI mode:", err);
                     }
                   }
                 }}
-                className="relative w-12 h-6 rounded-full transition-all"
-                style={{
-                  background: aiMode ? "var(--accent)" : "#CBD5E1",
-                  border: "none", cursor: "pointer",
-                }}
-              >
-                <div className="absolute top-1 w-4 h-4 rounded-full transition-all"
-                  style={{
-                    background: aiMode ? "#ffffff" : "#9ca3af",
-                    left: aiMode ? "calc(100% - 20px)" : "4px",
-                  }}
-                />
-              </button>
-              <span className="text-xs font-bold"
-                style={{ fontFamily: "monospace", color: aiMode ? "var(--accent)" : "var(--muted)" }}>
-                {aiMode ? "ON" : "OFF"}
-              </span>
-            </div>
-          </div>
-        </div>
+                color="primary"
+              />
+            }
+            label={
+              <Typography variant="body2" fontWeight="bold" color={aiMode ? 'primary' : 'textSecondary'}>
+                Chế độ AI: {aiMode ? 'BẬT' : 'TẮT'}
+              </Typography>
+            }
+          />
+        </Box>
+      </Box>
 
-        {/* ── Cảm biến ────────────────────────────────────────────────────── */}
-        <div className="mb-8">
-          <h2 className="text-xs tracking-widest uppercase mb-4"
-            style={{ fontFamily: "monospace", color: "var(--muted)" }}>
-            Cảm biến
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {/* ── Cảm biến ────────────────────────────────────────────────────── */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="overline" color="textSecondary" sx={{ mb: 2, display: 'block', fontWeight: 'bold' }}>
+          Cảm biến
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+          <Box>
             <SensorCard type="temp" value={sensors.temp} room="Phòng khách" />
+          </Box>
+          <Box>
             <SensorCard type="humi" value={sensors.humi} room="Phòng khách" />
+          </Box>
+          <Box>
             <SensorCard type="light" value={sensors.light} room="Phòng khách" />
+          </Box>
+          <Box>
             <SensorCard type="gas" value={sensors.gas} room="Phòng bếp" />
-          </div>
-        </div>
+          </Box>
+        </Box>
+      </Box>
 
-        {/* ── Thiết bị theo phòng ─────────────────────────────────────────── */}
-        <div className="mb-8">
-          <h2 className="text-xs tracking-widest uppercase mb-4"
-            style={{ fontFamily: "monospace", color: "var(--muted)" }}>
-            Thiết bị
-          </h2>
-          {Object.entries(devicesByRoom).map(([room, devs]) => (
-            <div key={room} className="mb-6">
-              <div className="badge badge-accent text-xs mb-3" style={{ fontSize: "11px" }}>
-                {roomLabel[room] || room}
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {devs.map((d) => (
+      {/* ── Thiết bị theo phòng ─────────────────────────────────────────── */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="overline" color="textSecondary" sx={{ mb: 2, display: 'block', fontWeight: 'bold' }}>
+          Thiết bị
+        </Typography>
+        {Object.entries(devicesByRoom).map(([room, devs]) => (
+          <Box key={room} sx={{ mb: 3 }}>
+            <Typography variant="subtitle2" sx={{ mb: 1.5, fontWeight: 'bold', color: 'primary.main', bgcolor: 'primary.light', display: 'inline-block', px: 1.5, py: 0.5, borderRadius: 1 }}>
+              {roomLabel[room] || room}
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
+              {devs.map((d) => (
+                <Box key={d.id}>
                   <DeviceCard
-                    key={d.id}
                     device={d}
                     aiMode={aiMode}
                     onToggle={(id, status) => toggleDevice(id, status, {
@@ -235,257 +236,202 @@ function Dashboard() {
                       gas: sensors.gas !== "--" ? sensors.gas : null,
                     })}
                   />
-                ))}
-              </div>
-            </div>
-          ))}
-          {devices.length === 0 && (
-            <div className="text-sm text-center py-12"
-              style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-              Chưa có thiết bị nào
-            </div>
-          )}
-        </div>
+                </Box>
+              ))}
+            </Box>
+          </Box>
+        ))}
+        {devices.length === 0 && (
+          <Typography variant="body2" color="textSecondary" align="center" sx={{ py: 6 }}>
+            Chưa có thiết bị nào
+          </Typography>
+        )}
+      </Box>
 
-        {/* ── Chart realtime ───────────────────────────────────────────────── */}
-        <div className="card p-6">
-          <h2 className="text-xs tracking-widest uppercase mb-6"
-            style={{ fontFamily: "monospace", color: "var(--muted)" }}>
-            Biểu đồ cảm biến realtime
-          </h2>
-          {chartData.length > 1 ? (
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart data={chartData}>
-                <XAxis dataKey="time" tick={{ fill: "var(--muted)", fontSize: 10 }} />
-                <YAxis tick={{ fill: "var(--muted)", fontSize: 10 }} />
-                <Tooltip
-                  contentStyle={{
-                    background: "#FFFFFF",
-                    border: "1px solid var(--border)",
-                    borderRadius: "8px",
-                    color: "var(--text)",
-                    fontSize: 12,
-                    boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
-                  }}
-                />
-                <Legend wrapperStyle={{ fontSize: 11, color: "var(--muted)" }} />
-                <Line type="monotone" dataKey="temp"  stroke="#DC2626" dot={false} strokeWidth={2} name="Nhiệt độ (°C)" />
-                <Line type="monotone" dataKey="humi"  stroke="#0284C7" dot={false} strokeWidth={2} name="Độ ẩm (%)" />
-                <Line type="monotone" dataKey="light" stroke="#D97706" dot={false} strokeWidth={2} name="Ánh sáng (lux)" />
-                <Line type="monotone" dataKey="gas"   stroke="#7C3AED" dot={false} strokeWidth={2} name="Khí gas (ppm)" />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="text-sm text-center py-12"
-              style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-              Đang chờ dữ liệu cảm biến...
-            </div>
-          )}
-        </div>
-      </div>
+      {/* ── Chart realtime ───────────────────────────────────────────────── */}
+      <Card sx={{ p: { xs: 2, sm: 3 } }}>
+        <Typography variant="overline" color="textSecondary" sx={{ mb: 3, display: 'block', fontWeight: 'bold' }}>
+          Biểu đồ cảm biến realtime
+        </Typography>
+        {chartData.length > 1 ? (
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={chartData} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.palette.divider} />
+              <XAxis dataKey="time" tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: theme.palette.text.secondary, fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: theme.palette.background.paper,
+                  border: `1px solid ${theme.palette.divider}`,
+                  borderRadius: 8,
+                  boxShadow: theme.shadows[3] }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12, color: theme.palette.text.secondary, paddingTop: 10 }} />
+              <Line type="monotone" dataKey="temp" stroke="#ef4444" dot={false} strokeWidth={3} name="Nhiệt độ (°C)" />
+              <Line type="monotone" dataKey="humi" stroke="#3b82f6" dot={false} strokeWidth={3} name="Độ ẩm (%)" />
+              <Line type="monotone" dataKey="light" stroke="#f59e0b" dot={false} strokeWidth={3} name="Ánh sáng (lux)" />
+              <Line type="monotone" dataKey="gas" stroke="#8b5cf6" dot={false} strokeWidth={3} name="Khí gas (ppm)" />
+            </LineChart>
+          </ResponsiveContainer>
+        ) : (
+          <Typography variant="body2" color="textSecondary" align="center" sx={{ py: 8 }}>
+            Đang chờ dữ liệu cảm biến...
+          </Typography>
+        )}
+      </Card>
 
       {/* ══════════════════════════════════════════════════════════════════════
           MODAL TRAIN AI
       ══════════════════════════════════════════════════════════════════════ */}
-      {showTrainModal && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-70 backdrop-blur-sm"
-          onClick={(e) => { if (e.target === e.currentTarget) closeModal(); }}
-        >
-          <div
-            className="card p-6 w-full max-w-md"
-          >
-            {/* Header modal */}
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-bold uppercase tracking-wide"
-                style={{ color: "var(--accent)", fontFamily: "monospace" }}>
-                ⚙️ Huấn luyện lại AI
-              </h3>
-              <button
-                onClick={closeModal}
-                style={{ color: "var(--muted)", background: "transparent", border: "none", cursor: "pointer", fontSize: 18 }}
+      <Dialog
+        open={showTrainModal}
+        onClose={(e, reason) => { if (reason !== 'backdropClick') closeModal(); }}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: {  } }}
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" fontWeight="bold" color="primary">
+            Huấn luyện lại AI
+          </Typography>
+          <IconButton onClick={closeModal} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+            Cập nhật thói quen bật/tắt thiết bị dựa trên bộ dữ liệu mới.
+          </Typography>
+
+          {/* ── TRẠNG THÁI: ĐANG LOADING ── */}
+          {trainStatus === TRAIN_STATUS.LOADING && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 6, gap: 2 }}>
+              <CircularProgress size={40} />
+              <Typography variant="body2" color="textSecondary">
+                Đang huấn luyện model...
+              </Typography>
+            </Box>
+          )}
+
+          {/* ── TRẠNG THÁI: THÀNH CÔNG ── */}
+          {trainStatus === TRAIN_STATUS.SUCCESS && (
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 3 }}>
+                <SuccessIcon color="success" />
+                <Typography variant="subtitle1" fontWeight="bold" color="success.main">
+                  {trainLines[0]}
+                </Typography>
+              </Box>
+
+              <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+                {trainLines.slice(1).map((line, idx) => {
+                  const colonIdx = line.lastIndexOf(":");
+                  const label = colonIdx !== -1 ? line.slice(0, colonIdx).trim() : line;
+                  const value = colonIdx !== -1 ? line.slice(colonIdx + 1).trim() : "";
+                  const accNum = parseFloat(value);
+                  const barColor = accNum >= 85 ? "success" : accNum >= 70 ? "warning" : "error";
+
+                  return (
+                    <Box
+                      key={idx}
+                      sx={{
+                        px: 2,
+                        py: 1.5,
+                        bgcolor: idx % 2 === 0 ? 'background.default' : 'background.paper',
+                        borderBottom: idx < trainLines.length - 2 ? `1px solid ${theme.palette.divider}` : 'none'
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                        <Typography variant="body2">{label}</Typography>
+                        <Typography variant="body2" fontWeight="bold" color={`${barColor}.main`}>{value}</Typography>
+                      </Box>
+                      {!isNaN(accNum) && (
+                        <LinearProgress variant="determinate" value={accNum} color={barColor} sx={{ height: 6 }} />
+                      )}
+                    </Box>
+                  );
+                })}
+              </Paper>
+            </Box>
+          )}
+
+          {/* ── TRẠNG THÁI: LỖI ── */}
+          {trainStatus === TRAIN_STATUS.ERROR && (
+            <Box sx={{ py: 2 }}>
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {trainError}
+              </Alert>
+              <Button
+                variant="outlined"
+                fullWidth
+                onClick={() => setTrainStatus(TRAIN_STATUS.IDLE)}
               >
-                ✕
-              </button>
-            </div>
+                Thử lại
+              </Button>
+            </Box>
+          )}
 
-            <p className="text-sm mb-5" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-              Cập nhật thói quen bật/tắt thiết bị dựa trên bộ dữ liệu mới.
-            </p>
-
-            {/* ── TRẠNG THÁI: ĐANG LOADING ── */}
-            {trainStatus === TRAIN_STATUS.LOADING && (
-              <div className="flex flex-col items-center gap-3 py-8">
-                <div
-                  className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin"
-                  style={{ borderColor: "var(--accent)", borderTopColor: "transparent" }}
-                />
-                <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                  Đang huấn luyện model...
-                </span>
-              </div>
-            )}
-
-            {/* ── TRẠNG THÁI: THÀNH CÔNG ── */}
-            {trainStatus === TRAIN_STATUS.SUCCESS && (
-              <div className="mb-5">
-                {/* Tiêu đề thành công */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-base">🎉</span>
-                  <span className="text-sm font-bold" style={{ color: "var(--accent)", fontFamily: "monospace" }}>
-                    {trainLines[0]}
-                  </span>
-                </div>
-
-                {/* Bảng kết quả accuracy */}
-                <div
-                  className="rounded-sm overflow-hidden"
-                  style={{ border: "1px solid rgba(45,158,107,0.25)" }}
-                >
-                  {trainLines.slice(1).map((line, idx) => {
-                    // Mỗi dòng có dạng "Tên thiết bị (ID x): 92.5%"
-                    const colonIdx = line.lastIndexOf(":");
-                    const label = colonIdx !== -1 ? line.slice(0, colonIdx).trim() : line;
-                    const value = colonIdx !== -1 ? line.slice(colonIdx + 1).trim() : "";
-                    const accNum = parseFloat(value);
-
-                    // Màu thanh progress theo accuracy
-                    const barColor =
-                      accNum >= 85 ? "#b8f550" :
-                        accNum >= 70 ? "#ffd93d" : "#ff6b6b";
-
-                    return (
-                      <div
-                        key={idx}
-                        className="px-4 py-3"
-                        style={{
-                          background: idx % 2 === 0 ? "#f9fafb" : "#ffffff",
-                          borderBottom: idx < trainLines.length - 2 ? "1px solid var(--border)" : "none",
-                        }}
-                      >
-                        <div className="flex justify-between items-center mb-1">
-                          <span className="text-xs" style={{ color: "var(--muted)", fontFamily: "monospace" }}>
-                            {label}
-                          </span>
-                          <span className="text-xs font-bold" style={{ color: barColor, fontFamily: "monospace" }}>
-                            {value}
-                          </span>
-                        </div>
-                        {/* Thanh progress */}
-                        {!isNaN(accNum) && (
-                          <div className="w-full rounded-full h-1" style={{ background: "#e5e7eb" }}>
-                            <div
-                              className="h-1 rounded-full transition-all"
-                              style={{ width: `${accNum}%`, background: barColor }}
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <button
-                  onClick={closeModal}
-                  className="mt-4 w-full py-2 text-xs uppercase tracking-widest font-bold rounded-sm transition-all hover:opacity-90"
-                  style={{ background: "var(--accent)", color: "#ffffff", border: "none", cursor: "pointer" }}
-                >
-                  Xong
-                </button>
-              </div>
-            )}
-
-            {/* ── TRẠNG THÁI: LỖI ── */}
-            {trainStatus === TRAIN_STATUS.ERROR && (
-              <div className="mb-5">
-                <div
-                  className="p-3 rounded-sm mb-4 text-xs"
-                  style={{
-                    background: "rgba(255,107,107,0.1)",
-                    border: "1px solid rgba(255,107,107,0.3)",
-                    color: "#ff6b6b",
-                    fontFamily: "monospace",
-                    whiteSpace: "pre-wrap",
+          {/* ── TRẠNG THÁI: IDLE ── */}
+          {trainStatus === TRAIN_STATUS.IDLE && (
+            <Box>
+              <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept=".csv,.xlsx"
+                onChange={handleFileUpload}
+              />
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'action.hover' },
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2
                   }}
+                  onClick={() => fileInputRef.current.click()}
                 >
-                  ❌ {trainError}
-                </div>
-                <button
-                  onClick={() => setTrainStatus(TRAIN_STATUS.IDLE)}
-                  className="w-full py-2 text-xs uppercase tracking-widest font-bold rounded-sm"
-                  style={{
-                    color: "var(--muted)",
-                    background: "transparent",
-                    border: "1px solid var(--border)",
-                    cursor: "pointer",
+                  <UploadIcon color="primary" fontSize="large" />
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight="bold">Tải lên Dataset</Typography>
+                    <Typography variant="caption" color="textSecondary">Hỗ trợ .csv hoặc .xlsx</Typography>
+                  </Box>
+                </Paper>
+
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'action.hover' },
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2
                   }}
+                  onClick={handleTrainFromDB}
                 >
-                  ← Thử lại
-                </button>
-              </div>
-            )}
-
-            {/* ── TRẠNG THÁI: IDLE — chọn nguồn train ── */}
-            {trainStatus === TRAIN_STATUS.IDLE && (
-              <>
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  className="hidden"
-                  accept=".csv,.xlsx"
-                  onChange={handleFileUpload}
-                />
-
-                <div className="flex flex-col gap-3 mb-5">
-                  {/* Option 1: Upload file */}
-                  <button
-                    onClick={() => fileInputRef.current.click()}
-                    className="w-full py-3 px-4 flex flex-col items-start gap-1 rounded-sm transition-all text-left hover:opacity-90"
-                    style={{ background: "#f3f4f6", border: "1px solid var(--border)" }}
-                  >
-                    <span className="font-bold text-sm" style={{ color: "var(--text)" }}>
-                      📁 Tải lên Dataset
-                    </span>
-                    <span className="text-xs" style={{ color: "var(--muted)" }}>
-                      Hỗ trợ .csv hoặc .xlsx (sheet: "Dữ liệu thô")
-                    </span>
-                  </button>
-
-                  {/* Option 2: Train từ DB */}
-                  <button
-                    onClick={handleTrainFromDB}
-                    className="w-full py-3 px-4 flex flex-col items-start gap-1 rounded-sm transition-all text-left hover:opacity-90"
-                    style={{ background: "var(--accent-light)", border: "1px solid rgba(45,158,107,0.3)" }}
-                  >
-                    <span className="font-bold text-sm" style={{ color: "var(--accent)" }}>
-                      🗄️ Trích xuất từ Database
-                    </span>
-                    <span className="text-xs" style={{ color: "var(--muted)", opacity: 0.8 }}>
-                      Tự động lọc lịch sử hệ thống (DeviceLog)
-                    </span>
-                  </button>
-                </div>
-
-                <div className="flex justify-end">
-                  <button
-                    onClick={closeModal}
-                    className="px-4 py-2 text-xs uppercase tracking-wider font-bold rounded-sm"
-                    style={{
-                      color: "var(--muted)",
-                      background: "transparent",
-                      border: "1px solid var(--border)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Hủy bỏ
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+                  <StorageIcon color="secondary" fontSize="large" />
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight="bold">Trích xuất từ Database</Typography>
+                    <Typography variant="caption" color="textSecondary">Tự động lọc lịch sử hệ thống</Typography>
+                  </Box>
+                </Paper>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          {trainStatus === TRAIN_STATUS.SUCCESS ? (
+            <Button onClick={closeModal} variant="contained" fullWidth>Xong</Button>
+          ) : trainStatus === TRAIN_STATUS.IDLE ? (
+            <Button onClick={closeModal} color="inherit">Hủy bỏ</Button>
+          ) : null}
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 }
 

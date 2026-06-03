@@ -2,6 +2,10 @@ from flask import Blueprint, request, jsonify, session, Response
 from models import db, FaceDataset
 from services.camera import VideoCamera
 import os, shutil
+import json
+import cv2
+import numpy as np
+from services.embedding_helper import EmbeddingModel
 
 cam = VideoCamera()
 dataset_bp = Blueprint("dataset", __name__)
@@ -98,12 +102,41 @@ def capture_start():
     return jsonify({"status": "ok"})
 
 
-# ── Stop capture ───────────────────────────────────────────────────────────
+# ── Stop capture & Trích xuất Embedding ────────────────────────────────────
 @dataset_bp.route("/capture/stop", methods=["POST"])
 @login_required
 def capture_stop():
+    user_name = cam.current_user
     cam.is_capturing = False
     cam.current_user = ""
+    
+    # Nếu đang có người được chụp, tiến hành trích xuất đặc trưng ngay
+    if user_name:
+        ds = FaceDataset.query.filter_by(name=user_name, user_id=session["user_id"]).first()
+        if ds:
+            face_model = EmbeddingModel.get_instance()
+            path = f"captured_faces/{ds.name}"
+            embeddings = []
+            
+            # Quét ảnh vừa chụp
+            if os.path.exists(path):
+                for fname in os.listdir(path):
+                    if fname.endswith(".jpg"):
+                        fpath = os.path.join(path, fname)
+                        img = cv2.imread(fpath)
+                        if img is not None:
+                            emb = face_model.extract_embedding(img)
+                            if emb is not None:
+                                embeddings.append(emb)
+            
+            # Tính trung bình và lưu vào Database
+            if embeddings:
+                mean_emb = np.mean(embeddings, axis=0)
+                mean_emb = mean_emb / np.linalg.norm(mean_emb) # Chuẩn hoá
+                ds.embedding = json.dumps(mean_emb.tolist())   # Lưu dạng JSON string
+                db.session.commit()
+                print(f"[INFO] Đã lưu embedding cho {ds.name} thành công!")
+
     return jsonify({"status": "ok"})
 
 
@@ -138,6 +171,8 @@ def stream():
             pass
         finally:
             cam.active_viewers -= 1
+            if cam.active_viewers <= 0:
+                cam.release_camera()
 
     return Response(
         gen(),
