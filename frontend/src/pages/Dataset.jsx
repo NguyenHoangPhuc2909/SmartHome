@@ -26,25 +26,25 @@ function Dataset() {
 
   const pollRef = useRef(null);
 
-  useEffect(() => {
-    fetchDatasets();
-    return () => {
-      stopPoll();
-      api.post("/api/datasets/capture/stop").catch(() => { });
-    };
-  }, []);
-
-  const startPoll = useCallback(() => {
-    stopPoll();
-    pollRef.current = setInterval(() => fetchDatasets(), 1500);
-  }, [fetchDatasets]);
-
   const stopPoll = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
   };
+
+  const startPoll = useCallback(() => {
+    stopPoll();
+    pollRef.current = setInterval(() => fetchDatasets(), 1500);
+  }, [fetchDatasets]);
+
+  useEffect(() => {
+    fetchDatasets();
+    return () => {
+      stopPoll();
+      api.post("/api/datasets/capture/stop").catch(() => { });
+    };
+  }, [fetchDatasets]);
 
   const handleAdd = async () => {
     const name = newName.trim();

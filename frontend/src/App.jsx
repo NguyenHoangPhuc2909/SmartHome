@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
+import { io } from "socket.io-client";
 import useStore from "./store";
 
 import Login    from "./pages/Login";
@@ -18,9 +19,26 @@ function PrivateRoute({ children }) {
 
 export default function App() {
   const fetchUser = useStore((s) => s.fetchUser);
+  const fetchDevices = useStore((s) => s.fetchDevices);
+  const fetchAccessLogs = useStore((s) => s.fetchAccessLogs);
 
   useEffect(() => {
     fetchUser();
+
+    // WebSocket connection
+    const socket = io("/");
+    
+    socket.on("refresh_devices", () => {
+      fetchDevices();
+    });
+
+    socket.on("refresh_access_logs", () => {
+      fetchAccessLogs();
+    });
+
+    return () => {
+      socket.disconnect();
+    };
   }, []);
 
   return (

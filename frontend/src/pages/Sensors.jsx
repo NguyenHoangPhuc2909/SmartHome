@@ -14,7 +14,7 @@ const chartConfig = {
 
 function Sensors() {
   const theme = useTheme();
-  const { sensors, devices, fetchDevices } = useStore();
+  const { sensors, devices, fetchDevices, sensorHistory, fetchSensorHistory } = useStore();
   const [selectedSensor, setSelectedSensor] = useState("temp");
   const [history, setHistory] = useState([]);
   
@@ -23,10 +23,7 @@ function Sensors() {
   // Fetch devices để lấy masterSensor nếu chưa có
   useEffect(() => {
     fetchDevices();
-    const interval = setInterval(() => {
-      fetchDevices();
-    }, 5000);
-    return () => clearInterval(interval);
+    fetchSensorHistory();
   }, []);
 
   // Lấy lịch sử cảm biến khi có masterSensor hoặc khi có data realtime mới
@@ -40,7 +37,7 @@ function Sensors() {
             humi: log.humi,
             light: log.light,
             gas: log.gas
-          }));
+          })).reverse();
           setHistory(data);
         })
         .catch(console.error);
@@ -68,6 +65,7 @@ function Sensors() {
               room="Phòng khách" 
               selected={selectedSensor === "temp"}
               onClick={() => setSelectedSensor("temp")}
+              history={sensorHistory}
             />
           </Box>
           <Box>
@@ -77,6 +75,7 @@ function Sensors() {
               room="Phòng khách" 
               selected={selectedSensor === "humi"}
               onClick={() => setSelectedSensor("humi")}
+              history={sensorHistory}
             />
           </Box>
           <Box>
@@ -86,6 +85,7 @@ function Sensors() {
               room="Phòng khách" 
               selected={selectedSensor === "light"}
               onClick={() => setSelectedSensor("light")}
+              history={sensorHistory}
             />
           </Box>
           <Box>
@@ -95,6 +95,7 @@ function Sensors() {
               room="Phòng bếp" 
               selected={selectedSensor === "gas"}
               onClick={() => setSelectedSensor("gas")}
+              history={sensorHistory}
             />
           </Box>
         </Box>

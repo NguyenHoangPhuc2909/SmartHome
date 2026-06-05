@@ -12,7 +12,7 @@ class User(db.Model):
     username      = db.Column(db.String(64), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     name          = db.Column(db.String(128))
-    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at    = db.Column(db.DateTime, default=datetime.now)
 
     datasets = db.relationship("FaceDataset", backref="owner", lazy=True, cascade="all, delete")
 
@@ -35,7 +35,7 @@ class FaceDataset(db.Model):
     name       = db.Column(db.String(128), nullable=False)
     # Thêm cột embedding kiểu Text để lưu chuỗi JSON của mảng vector đặc trưng
     embedding  = db.Column(db.Text, nullable=True) 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     access_logs = db.relationship("AccessLog", backref="matched_dataset", lazy=True,
                                   foreign_keys="AccessLog.matched_dataset_id")
@@ -82,7 +82,7 @@ class DeviceLog(db.Model):
     humi      = db.Column(db.Float,   nullable=True)            # độ ẩm lúc ghi log
     light     = db.Column(db.Float,   nullable=True)            # ánh sáng lúc ghi log
     gas       = db.Column(db.Float,   nullable=True)            # khí gas lúc ghi log
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
 
     def __repr__(self):
         return f"<DeviceLog device={self.device_id} status={self.status} mode={self.mode}>"
@@ -115,7 +115,7 @@ class AccessLog(db.Model):
     confidence         = db.Column(db.Float)
     result             = db.Column(db.String(16), nullable=False)               # GRANTED | DENIED
     is_alert           = db.Column(db.Boolean, default=False)                   # true nếu trigger còi
-    timestamp          = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp          = db.Column(db.DateTime, default=datetime.now)
 
     def __repr__(self):
         return f"<AccessLog device={self.device_id} result={self.result} alert={self.is_alert}>"

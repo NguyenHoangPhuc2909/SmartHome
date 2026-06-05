@@ -4,11 +4,16 @@ from models import db
 from config import Config
 import os
 
+from extensions import socketio
+
 app = Flask(__name__)
 app.config.from_object(Config)
 
 # ── Database ───────────────────────────────────────────────────────────────
 db.init_app(app)
+
+# ── Socket.IO ──────────────────────────────────────────────────────────────
+socketio.init_app(app)
 
 # ── IP Guard Middleware ────────────────────────────────────────────────────
 @app.before_request
@@ -63,4 +68,4 @@ with app.app_context():
     print("[INFO] Khởi tạo các thư mục lưu trữ dữ liệu ảnh và Database thành công!")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    socketio.run(app, host="0.0.0.0", port=5000, debug=True)

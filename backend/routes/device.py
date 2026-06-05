@@ -6,6 +6,7 @@ import traceback
 import pandas as pd
 from flask import Blueprint, request, jsonify, session
 from models import db, Device, DeviceLog, User
+from extensions import socketio
 
 device_bp = Blueprint("device", __name__)
 
@@ -82,6 +83,7 @@ def reset_to_ai():
                 ))
                 count += 1
         db.session.commit()
+        socketio.emit("refresh_devices", namespace="/")
         return jsonify({"status": "ok", "reset_count": count})
     except Exception as e:
         traceback.print_exc()
@@ -148,11 +150,38 @@ def update_sensor():
             ))
 
         db.session.commit()
+        socketio.emit("refresh_devices", namespace="/")
         return jsonify({"status": "ok", "predictions": predictions})
 
     except Exception as e:
         traceback.print_exc()
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# GET /sensor-history  — Lấy lịch sử cảm biến cho mini-chart
+# ══════════════════════════════════════════════════════════════════════════════
+@device_bp.route("/sensor-history", methods=["GET"])
+def get_sensor_history():
+    logs = (
+        db.session.query(DeviceLog)
+        .join(Device, DeviceLog.device_id == Device.id)
+        .filter(Device.type == "sensor")
+        .filter(DeviceLog.temp.isnot(None))
+        .order_by(DeviceLog.timestamp.desc())
+        .limit(50)  # Lấy 50 điểm dữ liệu cho mượt
+        .all()
+    )
+    
+    logs.reverse()
+    
+    return jsonify([{
+        "time":  l.timestamp.strftime("%H:%M:%S"),
+        "temp":  l.temp,
+        "humi":  l.humi,
+        "light": l.light,
+        "gas":   l.gas,
+    } for l in logs])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -181,6 +210,7 @@ def control_device(device_id):
         gas=float(gas)   if gas   is not None else 0.0,
     ))
     db.session.commit()
+    socketio.emit("refresh_devices", namespace="/")
     return jsonify({"status": "ok", "mode": mode, "device_status": status})
 
 
