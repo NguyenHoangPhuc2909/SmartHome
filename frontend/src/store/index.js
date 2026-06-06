@@ -92,6 +92,17 @@ const useStore = create((set, get) => ({
   sensors: { temp: "--", humi: "--", light: "--", gas: "--" },
   setSensors: (data) => set({ sensors: data }),
 
+  // ── Sensor History (dữ liệu cho mini-chart) ──────────────────────────────
+  sensorHistory: [],
+  fetchSensorHistory: async () => {
+    try {
+      const res = await api.get("/api/devices/sensor-history");
+      set({ sensorHistory: res.data });
+    } catch (err) {
+      console.error("fetchSensorHistory:", err);
+    }
+  },
+
   // ── Access Logs ───────────────────────────────────────────────────────────
   accessLogs: [],
   fetchAccessLogs: async () => {

@@ -16,8 +16,6 @@ function Access() {
 
   useEffect(() => {
     fetchAccessLogs();
-    const interval = setInterval(fetchAccessLogs, 5000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {

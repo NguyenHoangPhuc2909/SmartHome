@@ -44,7 +44,7 @@ const TRAIN_STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success", ERR
 
 function Dashboard() {
   const theme = useTheme();
-  const { devices, sensors, aiMode, accessLogs, fetchDevices, fetchAccessLogs, toggleDevice } = useStore();
+  const { devices, sensors, aiMode, accessLogs, sensorHistory, fetchDevices, fetchAccessLogs, fetchSensorHistory, toggleDevice } = useStore();
   const [chartData, setChartData] = useState([]);
 
   // Modal train AI
@@ -54,15 +54,11 @@ function Dashboard() {
   const [trainError, setTrainError] = useState("");
   const fileInputRef = useRef(null);
 
-  // ── Poll mỗi 5 giây ─────────────────────────────────────────────────────────
+  // ── Fetch dữ liệu ban đầu ──────────────────────────────────────────────────
   useEffect(() => {
     fetchDevices();
     fetchAccessLogs();
-    const interval = setInterval(() => {
-      fetchDevices();
-      fetchAccessLogs();
-    }, 5000);
-    return () => clearInterval(interval);
+    fetchSensorHistory();
   }, []);
 
   // ── Cập nhật chart khi sensors thay đổi ──────────────────────────────────────
@@ -210,16 +206,16 @@ function Dashboard() {
         </Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
           <Box>
-            <SensorCard type="temp" value={sensors.temp} room="Phòng khách" />
+            <SensorCard type="temp" value={sensors.temp} room="Phòng khách" history={sensorHistory} />
           </Box>
           <Box>
-            <SensorCard type="humi" value={sensors.humi} room="Phòng khách" />
+            <SensorCard type="humi" value={sensors.humi} room="Phòng khách" history={sensorHistory} />
           </Box>
           <Box>
-            <SensorCard type="light" value={sensors.light} room="Phòng khách" />
+            <SensorCard type="light" value={sensors.light} room="Phòng khách" history={sensorHistory} />
           </Box>
           <Box>
-            <SensorCard type="gas" value={sensors.gas} room="Phòng bếp" />
+            <SensorCard type="gas" value={sensors.gas} room="Phòng bếp" history={sensorHistory} />
           </Box>
         </Box>
       </Box>

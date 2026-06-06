@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, session
 from models import db, AccessLog, FaceDataset, Device, DeviceLog, User
+from extensions import socketio
 from config import Config
 import os, datetime
 import onnxruntime as ort
@@ -120,6 +121,8 @@ def recognize():
         db.session.add(alarm_log)
 
     db.session.commit()
+    socketio.emit("refresh_access_logs", namespace="/")
+    socketio.emit("refresh_devices", namespace="/")
 
     return jsonify({
         "result":        result,
