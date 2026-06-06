@@ -44,7 +44,7 @@ const TRAIN_STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success", ERR
 
 function Dashboard() {
   const theme = useTheme();
-  const { devices, sensors, aiMode, accessLogs, fetchDevices, fetchAccessLogs, toggleDevice, setAiMode } = useStore();
+  const { devices, sensors, aiMode, accessLogs, fetchDevices, fetchAccessLogs, toggleDevice } = useStore();
   const [chartData, setChartData] = useState([]);
 
   // Modal train AI
@@ -131,6 +131,35 @@ function Dashboard() {
     }
   };
 
+  const handleAutoControl = async () => {
+    try {
+      const sensorData = {
+        temp: sensors.temp !== "--" ? parseFloat(sensors.temp) : 25.0,
+        humi: sensors.humi !== "--" ? parseFloat(sensors.humi) : 60.0,
+        light: sensors.light !== "--" ? parseFloat(sensors.light) : 150.0,
+        gas: sensors.gas !== "--" ? parseFloat(sensors.gas) : 0.0,
+      };
+      
+      const response = await axios.post("/api/devices/auto-control", sensorData);
+      
+      if (response.data.status === "ok") {
+        const actions = response.data.actions || [];
+        const onDevices = actions.filter(a => a.status === 1).map(a => `${a.name} (${roomLabel[a.room] || a.room})`);
+        const offDevices = actions.filter(a => a.status === 0).map(a => `${a.name} (${roomLabel[a.room] || a.room})`);
+        
+        let alertMsg = "🤖 [AI Auto Control] Kết quả xác định trạng thái thiết bị:\n\n";
+        alertMsg += `🟢 Thiết bị BẬT:\n${onDevices.length > 0 ? onDevices.map(d => ` - ${d}`).join("\n") : " - Không có"}\n\n`;
+        alertMsg += `🔴 Thiết bị TẮT:\n${offDevices.length > 0 ? offDevices.map(d => ` - ${d}`).join("\n") : " - Không có"}`;
+        
+        alert(alertMsg);
+        fetchDevices();
+      }
+    } catch (error) {
+      console.error("Auto control failed:", error);
+      alert("❌ Lỗi khi tự động kích hoạt thiết bị!");
+    }
+  };
+
   const activeAlerts = accessLogs.filter((l) => l.is_alert);
   const devicesByRoom = devices.reduce((acc, d) => {
     if (d.type === "sensor") return acc;
@@ -152,7 +181,16 @@ function Dashboard() {
           </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleAutoControl}
+            sx={{ fontWeight: 'bold' }}
+          >
+            Tự động kích hoạt (AI)
+          </Button>
+
           <Button
             variant="outlined"
             startIcon={<SettingsIcon />}
@@ -162,33 +200,6 @@ function Dashboard() {
             Huấn luyện AI
           </Button>
 
-          <Box sx={{ width: '1px', height: 24, bgcolor: 'divider' }} />
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={aiMode}
-                onChange={async () => {
-                  const newMode = !aiMode;
-                  setAiMode(newMode);
-                  if (newMode) {
-                    try {
-                      await axios.post("/api/devices/reset-to-ai");
-                      fetchDevices();
-                    } catch (err) {
-                      console.error("Không thể reset về AI mode:", err);
-                    }
-                  }
-                }}
-                color="primary"
-              />
-            }
-            label={
-              <Typography variant="body2" fontWeight="bold" color={aiMode ? 'primary' : 'textSecondary'}>
-                Chế độ AI: {aiMode ? 'BẬT' : 'TẮT'}
-              </Typography>
-            }
-          />
         </Box>
       </Box>
 

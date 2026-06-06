@@ -53,14 +53,22 @@ def run_schedules():
 # Tối ưu hóa: Ngăn scheduler khởi chạy 2 lần khi debug=True
 if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
     scheduler.start()
-    print("[INFO] APScheduler đã khởi động thành công!")
+    print("[INFO] APScheduler started successfully!")
 
 # ── Init folders & DB ──────────────────────────────────────────────────────
 with app.app_context():
     os.makedirs(Config.CAPTURED_FACES_DIR, exist_ok=True)
     os.makedirs(Config.RECOG_IMAGES_DIR,   exist_ok=True)
     db.create_all()
-    print("[INFO] Khởi tạo các thư mục lưu trữ dữ liệu ảnh và Database thành công!")
+    
+    # Tự động tạo 4 thiết bị (đèn pk, đèn pn, quạt pk, quạt pn) nếu chưa có
+    try:
+        from services.ai import ensure_devices_exist
+        ensure_devices_exist()
+    except Exception as e:
+        print(f"[WARNING] Could not initialize devices: {e}")
+        
+    print("[INFO] Initialized storage folders and database successfully!")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
