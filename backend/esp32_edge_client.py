@@ -11,8 +11,9 @@ print("[INFO] Đang nạp YuNet Face Detector siêu nhẹ...")
 
 # ================= CẤU HÌNH =================
 ESP32_IP       = "10.180.24.21"
+HOME_CODE      = "H123456" # Thay bằng mã ngôi nhà của bạn
 CAPTURE_URL    = f"http://{ESP32_IP}/capture"
-SERVER_URL     = f"http://localhost:5000/api/access/recognize"
+SERVER_URL     = f"http://localhost:5000/api/access/recognize?home_code={HOME_CODE}"
 CAPTURE_DELAY  = 0.5   # Chụp 2 ảnh/giây - ESP32 chịu được lâu dài
 RECOG_COOLDOWN = 5.0
 # ============================================

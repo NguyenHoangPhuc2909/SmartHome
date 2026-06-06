@@ -159,6 +159,65 @@ def update_sensor():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# POST /auto-control  — Tự động xác định trạng thái thiết bị bằng AI
+# ══════════════════════════════════════════════════════════════════════════════
+@device_bp.route("/auto-control", methods=["POST"])
+def auto_control_devices():
+    data = request.json or {}
+    try:
+        temp  = float(data.get("temp",  25.0))
+        humi  = float(data.get("humi",  60.0))
+        light = float(data.get("light", 150.0))
+        gas   = float(data.get("gas",   0.0))
+
+        now = datetime.datetime.now()
+
+        from services.ai import predict_behavior, ensure_devices_exist
+        ensure_devices_exist()
+        
+        predictions = predict_behavior(temp, humi, light, now)
+
+        from models import Device, DeviceLog
+        devices_map = {
+            'PK_den': Device.query.filter_by(type='light', room='living_room').first(),
+            'PK_quat': Device.query.filter_by(type='fan', room='living_room').first(),
+            'PN_den': Device.query.filter_by(type='light', room='bedroom').first(),
+            'PN_quat': Device.query.filter_by(type='fan', room='bedroom').first(),
+        }
+
+        actions = []
+        for key, dev in devices_map.items():
+            if dev:
+                pred_status = predictions.get(dev.id, 0)
+                
+                # Ghi log trạng thái AI cho thiết bị
+                db.session.add(DeviceLog(
+                    device_id=dev.id,
+                    status=pred_status,
+                    mode="AI",
+                    temp=temp,
+                    humi=humi,
+                    light=light,
+                    gas=gas,
+                ))
+                
+                actions.append({
+                    "id": dev.id,
+                    "name": dev.name,
+                    "room": dev.room,
+                    "status": pred_status,
+                    "status_text": "BẬT" if pred_status == 1 else "TẮT"
+                })
+
+        db.session.commit()
+        return jsonify({"status": "ok", "actions": actions})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # GET /sensor-history  — Lấy lịch sử cảm biến cho mini-chart
 # ══════════════════════════════════════════════════════════════════════════════
 @device_bp.route("/sensor-history", methods=["GET"])

@@ -30,9 +30,9 @@ class VideoCamera(object):
                 top_k=5000
             )
             self.use_yunet = True
-            print("[INFO] Đã kích hoạt YuNet Face Detector!")
+            print("[INFO] Activated YuNet Face Detector!")
         except Exception as e:
-            print(f"[CẢNH BÁO] Không load được YuNet ({e}), dùng lại Haar Cascade.")
+            print(f"[WARNING] Could not load YuNet ({e}), falling back to Haar Cascade.")
             self.use_yunet = False
             self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
             self.profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
