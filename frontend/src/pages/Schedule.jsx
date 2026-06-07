@@ -172,7 +172,7 @@ function Schedule() {
 
       <Grid container spacing={4}>
         {/* Cột Trái: Form */}
-        <Grid item xs={12} md={5}>
+        <Grid xs={12} md={5}>
           <Card sx={{ border: `1px solid ${editId ? theme.palette.primary.main : theme.palette.divider}`, boxShadow: editId ? '0 0 0 2px rgba(25, 118, 210, 0.2)' : 'none', position: 'sticky', top: 20, transition: '0.3s' }}>
             <CardContent sx={{ p: 3 }}>
               <Typography variant="subtitle1" fontWeight="bold" mb={3} color="primary">
@@ -244,10 +244,10 @@ function Schedule() {
                       <MdAccessTime /> Giờ Bật
                     </Typography>
                     <Grid container spacing={2} sx={{ pt: 1 }}>
-                      <Grid item xs={6}>
+                      <Grid xs={6}>
                         <TextField
                           fullWidth type="number" label="Giờ (0-23)"
-                          InputProps={{ inputProps: { min: 0, max: 23 } }}
+                          inputProps={{ min: 0, max: 23 }}
                           value={form.onHour === "" ? "" : form.onHour}
                           onChange={(e) => {
                             let val = e.target.value;
@@ -259,10 +259,10 @@ function Schedule() {
                           size="small" sx={{ bgcolor: '#fff' }}
                         />
                       </Grid>
-                      <Grid item xs={6}>
+                      <Grid xs={6}>
                         <TextField
                           fullWidth type="number" label="Phút (0-59)"
-                          InputProps={{ inputProps: { min: 0, max: 59 } }}
+                          inputProps={{ min: 0, max: 59 }}
                           value={form.onMinute === "" ? "" : form.onMinute}
                           onChange={(e) => {
                             let val = e.target.value;
@@ -285,10 +285,10 @@ function Schedule() {
                       <MdAccessTime /> Giờ Tắt
                     </Typography>
                     <Grid container spacing={2} sx={{ pt: 1 }}>
-                      <Grid item xs={6}>
+                      <Grid xs={6}>
                         <TextField
                           fullWidth type="number" label="Giờ (0-23)"
-                          InputProps={{ inputProps: { min: 0, max: 23 } }}
+                          inputProps={{ min: 0, max: 23 }}
                           value={form.offHour === "" ? "" : form.offHour}
                           onChange={(e) => {
                             let val = e.target.value;
@@ -300,10 +300,10 @@ function Schedule() {
                           size="small" sx={{ bgcolor: '#fff' }}
                         />
                       </Grid>
-                      <Grid item xs={6}>
+                      <Grid xs={6}>
                         <TextField
                           fullWidth type="number" label="Phút (0-59)"
-                          InputProps={{ inputProps: { min: 0, max: 59 } }}
+                          inputProps={{ min: 0, max: 59 }}
                           value={form.offMinute === "" ? "" : form.offMinute}
                           onChange={(e) => {
                             let val = e.target.value;
@@ -361,7 +361,7 @@ function Schedule() {
         </Grid>
 
         {/* Cột Phải: Danh sách lịch */}
-        <Grid item xs={12} md={7}>
+        <Grid xs={12} md={7}>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {schedules.length === 0 && (
               <Typography color="textSecondary" align="center" sx={{ py: 8 }}>

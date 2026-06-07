@@ -106,9 +106,9 @@ function Access() {
             </Typography>
           </Box>
 
-          <Grid container spacing={4} alignItems="center">
+          <Grid container spacing={4} sx={{ alignItems: 'center' }}>
             {/* Live Camera Feed */}
-            <Grid item xs={12} sm={4} md={3} sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Grid xs={12} sm={4} md={3} sx={{ display: 'flex', justifyContent: 'center' }}>
               <Box sx={{ width: 160, height: 160, borderRadius: 1, overflow: 'hidden', bgcolor: 'black', border: `1px solid ${theme.palette.divider}` }}>
                 {selectedLogId && selectedLogId !== latestLog?.id ? (
                   <img src={`/api/access/image/${selectedLogId}`} alt="Snapshot" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -123,17 +123,17 @@ function Access() {
             </Grid>
 
             {/* Latest Result */}
-            <Grid item xs={12} sm={8} md={9}>
+            <Grid xs={12} sm={8} md={9}>
               {displayLog ? (
                 <Grid container spacing={3}>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">👤 Nhân vật</Typography>
                     <Typography variant="subtitle1" fontWeight="bold" color={displayLog.matched_name ? 'textPrimary' : 'error'}>
                       {displayLog.matched_name || "Không nhận ra"}
                     </Typography>
                   </Grid>
 
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">📊 Độ chính xác</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography variant="subtitle1" fontWeight="bold" color={displayLog.confidence >= 0.65 ? 'success.main' : 'error.main'}>
@@ -150,7 +150,7 @@ function Access() {
                     </Box>
                   </Grid>
 
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">⚠️ Kết quả</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                       <Chip 
@@ -173,7 +173,7 @@ function Access() {
                     </Box>
                   </Grid>
 
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">🕐 Thời gian</Typography>
                     <Typography variant="subtitle2" fontWeight="bold" mt={0.5}>
                       {new Date(displayLog.timestamp).toLocaleString("vi-VN")}

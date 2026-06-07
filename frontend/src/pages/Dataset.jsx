@@ -130,7 +130,7 @@ function Dataset() {
       )}
 
       {/* Dialog Xoá */}
-      <Dialog open={!!confirmId} onClose={() => setConfirmId(null)} PaperProps={{ sx: {  } }}>
+      <Dialog open={!!confirmId} onClose={() => setConfirmId(null)} slotProps={{ paper: {  sx: {  }  } }}>
         <DialogTitle>Xác nhận xoá</DialogTitle>
         <DialogContent>
           <Typography>Xóa dữ liệu khuôn mặt này? Tất cả ảnh sẽ bị xóa vĩnh viễn và không thể khôi phục.</Typography>

@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from flask_apscheduler import APScheduler
+from flask_socketio import SocketIO
 from models import db
 from config import Config
 import os
@@ -46,21 +46,22 @@ app.register_blueprint(schedule_bp, url_prefix="/api/schedules")
 app.register_blueprint(access_bp,   url_prefix="/api/access")
 
 # ── Scheduler (chạy schedules) ─────────────────────────────────────────────
-scheduler = APScheduler()
-scheduler.init_app(app)
-
-@scheduler.task("interval", id="run_schedules", seconds=60, misfire_grace_time=10)
-def run_schedules():
+def run_schedules_loop():
     from services.scheduler import check_schedules
-    with app.app_context():
-        executed = check_schedules()
-        if executed:
-            socketio.emit("refresh_devices", namespace="/")
+    while True:
+        socketio.sleep(60)
+        with app.app_context():
+            try:
+                executed = check_schedules()
+                if executed:
+                    socketio.emit("refresh_devices", namespace="/")
+            except Exception as e:
+                print(f"[ERROR] Scheduler error: {e}")
 
 # Tối ưu hóa: Ngăn scheduler khởi chạy 2 lần khi debug=True
 if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-    scheduler.start()
-    print("[INFO] APScheduler started successfully!")
+    socketio.start_background_task(run_schedules_loop)
+    print("[INFO] Background scheduler started successfully!")
 
 # ── Init folders & DB ──────────────────────────────────────────────────────
 with app.app_context():

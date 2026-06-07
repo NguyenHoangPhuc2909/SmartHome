@@ -188,13 +188,10 @@ function Layout() {
                     {item.icon}
                   </ListItemIcon>
                   {!isCollapsed && (
-                    <ListItemText
-                      primary={item.text}
-                      primaryTypographyProps={{
+                    <ListItemText disableTypography primary={<Typography sx={{
                         fontWeight: isActive ? 600 : 500,
                         fontSize: '0.9rem'
-                      }}
-                    />
+                      }}>{item.text}</Typography>} />
                   )}
                 </ListItemButton>
               </ListItem>
@@ -353,7 +350,7 @@ function Layout() {
             onClose={handleNotiClose}
             anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
             transformOrigin={{ vertical: 'top', horizontal: 'right' }}
-            PaperProps={{ sx: { width: 340, mt: 1.5, borderRadius: 2, boxShadow: 3 } }}
+            slotProps={{ paper: {  sx: { width: 340, mt: 1.5, borderRadius: 2, boxShadow: 3 }  } }}
           >
             <Box sx={{ p: 2, borderBottom: '1px solid #eee' }}>
               <Typography variant="subtitle1" fontWeight="bold">Thông báo</Typography>

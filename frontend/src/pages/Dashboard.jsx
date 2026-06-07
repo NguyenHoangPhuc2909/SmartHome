@@ -295,7 +295,7 @@ function Dashboard() {
         onClose={(e, reason) => { if (reason !== 'backdropClick') closeModal(); }}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: {  } }}
+        slotProps={{ paper: {  sx: {  }  } }}
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" fontWeight="bold" color="primary">
