@@ -6,256 +6,131 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from models import Device, db
 
-class DecisionNode:
-    def __init__(self, feature=None, threshold=None, left=None, right=None, *, value=None):
-        self.feature = feature          # Index of feature to split on
-        self.threshold = threshold      # Threshold value for split
-        self.left = left                # Left subtree
-        self.right = right              # Right subtree
-        self.value = value              # Class probabilities if leaf (list of floats)
-        
-    def is_leaf(self):
-        return self.value is not None
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from sklearn.base import BaseEstimator, ClassifierMixin
+from sklearn.tree import DecisionTreeClassifier as SklearnDecisionTreeClassifier
 
+# ============================================================================
+# 1. HÀM HỖ TRỢ HUẤN LUYỆN ĐA LUỒNG (CUSTOM FORESTS LOGIC)
+# ============================================================================
+def _train_single_tree(args):
+    tree_idx, X, y, tree_params, balanced_sampling, rng_seed = args
+    rng = np.random.RandomState(rng_seed)
+    n_samples = len(y)
+    
+    # 1. Tự code logic Lấy mẫu (Bootstrapping / Balanced Sampling)
+    if balanced_sampling:
+        classes = np.unique(y)
+        class_indices = {}
+        min_count = float('inf')
+        for cls in classes:
+            indices = np.where(y == cls)[0]
+            class_indices[cls] = indices
+            min_count = min(min_count, len(indices))
+            
+        balanced_indices = []
+        for cls in classes:
+            # Lấy mẫu cân bằng cho từng class
+            sampled = rng.choice(class_indices[cls], size=int(min_count), replace=True)
+            balanced_indices.append(sampled)
+        indices = np.concatenate(balanced_indices)
+        rng.shuffle(indices)
+    else:
+        # Bootstrapping truyền thống
+        indices = rng.choice(n_samples, size=n_samples, replace=True)
+        
+    X_boot = X[indices]
+    y_boot = y[indices]
+    
+    # 2. Kế thừa thuật toán CART siêu tốc của sklearn cho từng cây con
+    tree = SklearnDecisionTreeClassifier(random_state=rng_seed, **tree_params)
+    tree.fit(X_boot, y_boot)
+    
+    return tree_idx, tree, tree.feature_importances_
 
-class DecisionTreeClassifier:
-    def __init__(self, max_depth=None, min_samples_split=2, max_features='sqrt', random_state=None):
-        self.max_depth = max_depth
-        self.min_samples_split = min_samples_split
-        self.max_features = max_features
-        self.random_state = random_state
-        self.root = None
-        
-    def fit(self, X, y, sample_weight=None, classes=None):
-        X = np.asarray(X)
-        y = np.asarray(y)
-        n_samples, n_features = X.shape
-        
-        if sample_weight is None:
-            sample_weight = np.ones(n_samples, dtype=float)
-            
-        if classes is not None:
-            self.classes_ = np.asarray(classes)
-        else:
-            self.classes_ = np.array([0, 1])
-            
-        self.n_classes_ = len(self.classes_)
-        self.rng = np.random.RandomState(self.random_state)
-        
-        self.root = self._build_tree(X, y, sample_weight, depth=0)
-        return self
-        
-    def _build_tree(self, X, y, sample_weight, depth):
-        n_samples, n_features = X.shape
-        unique_y = np.unique(y)
-        
-        # Base case 1: pure node
-        if len(unique_y) == 1:
-            return DecisionNode(value=self._get_leaf_value(y, sample_weight))
-            
-        # Base case 2: max depth reached
-        if self.max_depth is not None and depth >= self.max_depth:
-            return DecisionNode(value=self._get_leaf_value(y, sample_weight))
-            
-        # Base case 3: too few samples
-        if n_samples < self.min_samples_split:
-            return DecisionNode(value=self._get_leaf_value(y, sample_weight))
-            
-        # Feature bagging
-        if self.max_features == 'sqrt':
-            n_sub_features = int(np.sqrt(n_features))
-        elif isinstance(self.max_features, int):
-            n_sub_features = min(self.max_features, n_features)
-        else:
-            n_sub_features = n_features
-            
-        n_sub_features = max(1, n_sub_features)
-        feature_idxs = self.rng.choice(n_features, n_sub_features, replace=False)
-        
-        best_feat, best_thresh, best_gain = None, None, -1.0
-        
-        # Calculate parent Gini
-        total_weight = np.sum(sample_weight)
-        if total_weight == 0:
-            return DecisionNode(value=self._get_leaf_value(y, sample_weight))
-            
-        class_weights = {}
-        parent_gini = 1.0
-        for c in self.classes_:
-            c_mask = (y == c)
-            c_weight = np.sum(sample_weight[c_mask])
-            sample_weight_c = sample_weight[c_mask]
-            class_weights[c] = (c_mask, c_weight, sample_weight_c)
-            p = c_weight / total_weight
-            parent_gini -= p ** 2
-            
-        for feat in feature_idxs:
-            X_column = X[:, feat]
-            thresholds = np.unique(X_column)
-            if len(thresholds) <= 1:
-                continue
-                
-            if len(thresholds) > 20:
-                midpoints = np.percentile(X_column, np.linspace(5, 95, 20))
-            else:
-                midpoints = (thresholds[:-1] + thresholds[1:]) / 2.0
-                
-            # Pre-slice X_column for each class to speed up threshold loops
-            X_column_by_class = {}
-            for c in self.classes_:
-                c_mask, _, _ = class_weights[c]
-                X_column_by_class[c] = X_column[c_mask]
-                
-            for thresh in midpoints:
-                left_c_weights = {}
-                weight_l = 0.0
-                for c in self.classes_:
-                    _, _, sample_weight_c = class_weights[c]
-                    X_column_c = X_column_by_class[c]
-                    left_c_weight = np.sum(sample_weight_c[X_column_c <= thresh])
-                    left_c_weights[c] = left_c_weight
-                    weight_l += left_c_weight
-                    
-                weight_r = total_weight - weight_l
-                
-                if weight_l == 0 or weight_r == 0:
-                    continue
-                    
-                gini_l = 1.0
-                gini_r = 1.0
-                for c in self.classes_:
-                    _, c_weight_total, _ = class_weights[c]
-                    left_c_weight = left_c_weights[c]
-                    right_c_weight = c_weight_total - left_c_weight
-                    
-                    p_l = left_c_weight / weight_l
-                    p_r = right_c_weight / weight_r
-                    
-                    gini_l -= p_l ** 2
-                    gini_r -= p_r ** 2
-                    
-                child_gini = (weight_l / total_weight) * gini_l + (weight_r / total_weight) * gini_r
-                gain = parent_gini - child_gini
-                
-                if gain > best_gain:
-                    best_gain = gain
-                    best_feat = feat
-                    best_thresh = thresh
-                    
-        if best_gain <= 0.0 or best_feat is None:
-            return DecisionNode(value=self._get_leaf_value(y, sample_weight))
-            
-        left_mask = X[:, best_feat] <= best_thresh
-        right_mask = ~left_mask
-        
-        left_child = self._build_tree(X[left_mask], y[left_mask], sample_weight[left_mask], depth + 1)
-        right_child = self._build_tree(X[right_mask], y[right_mask], sample_weight[right_mask], depth + 1)
-        
-        return DecisionNode(feature=best_feat, threshold=best_thresh, left=left_child, right=right_child)
-        
-    def _get_leaf_value(self, y, sample_weight):
-        total_weight = np.sum(sample_weight)
-        probs = np.zeros(self.n_classes_)
-        if total_weight == 0:
-            probs += 1.0 / self.n_classes_
-            return probs
-            
-        for c_idx, c in enumerate(self.classes_):
-            c_weight = np.sum(sample_weight[y == c])
-            probs[c_idx] = c_weight / total_weight
-        return probs
-        
-    def _predict_proba_sample(self, node, x):
-        if node.is_leaf():
-            return node.value
-            
-        if x[node.feature] <= node.threshold:
-            return self._predict_proba_sample(node.left, x)
-        else:
-            return self._predict_proba_sample(node.right, x)
-            
-    def predict_proba(self, X):
-        X = np.asarray(X)
-        if len(X.shape) == 1:
-            X = X.reshape(1, -1)
-        probs = [self._predict_proba_sample(self.root, x) for x in X]
-        return np.array(probs)
-        
-    def predict(self, X):
-        probs = self.predict_proba(X)
-        return np.array([self.classes_[np.argmax(p)] for p in probs])
-
-
-class RandomForestClassifier:
-    def __init__(self, n_estimators=100, max_depth=None, min_samples_split=2, 
-                 class_weight=None, random_state=None, n_jobs=-1):
+# ============================================================================
+# 2. CUSTOM RANDOM FOREST CLASSIFIER
+# ============================================================================
+class CustomRandomForest(BaseEstimator, ClassifierMixin):
+    def __init__(self, n_estimators=100, max_depth=None, min_samples_split=2,
+                 min_samples_leaf=1, max_features='sqrt', balanced_sampling=True,
+                 class_weight=None, random_state=42, n_jobs=1):
         self.n_estimators = n_estimators
         self.max_depth = max_depth
         self.min_samples_split = min_samples_split
+        self.min_samples_leaf = min_samples_leaf
+        self.max_features = max_features
+        self.balanced_sampling = balanced_sampling
         self.class_weight = class_weight
         self.random_state = random_state
         self.n_jobs = n_jobs
-        self.estimators_ = []
-        self.classes_ = None
-        
+
     def fit(self, X, y):
-        X = np.asarray(X)
-        y = np.asarray(y)
-        n_samples, n_features = X.shape
+        X = np.asarray(X, dtype=np.float64)
+        y = np.asarray(y, dtype=np.int32)
         
         self.classes_ = np.unique(y)
         self.n_classes_ = len(self.classes_)
+        self.n_features_ = X.shape[1]
         
-        if self.class_weight == 'balanced':
-            classes = self.classes_
-            n_classes = self.n_classes_
-            class_counts = np.bincount(y.astype(int))
-            class_weights = {}
-            for c in classes:
-                count = class_counts[c] if c < len(class_counts) else 0
-                class_weights[c] = n_samples / (n_classes * count) if count > 0 else 0.0
-            sample_weight = np.array([class_weights[val] for val in y])
+        # Tham số sẽ truyền xuống cho DecisionTree
+        tree_params = {
+            'max_depth': self.max_depth,
+            'min_samples_split': self.min_samples_split,
+            'min_samples_leaf': self.min_samples_leaf,
+            'max_features': self.max_features,
+            'class_weight': self.class_weight,
+        }
+        
+        master_rng = np.random.RandomState(self.random_state)
+        tree_seeds = master_rng.randint(0, 2**31 - 1, size=self.n_estimators)
+        
+        args_list = [
+            (i, X, y, tree_params, self.balanced_sampling, int(tree_seeds[i]))
+            for i in range(self.n_estimators)
+        ]
+        
+        self.estimators_ = [None] * self.n_estimators
+        self.feature_importances_ = np.zeros(self.n_features_)
+        
+        n_jobs = self.n_jobs if self.n_jobs != -1 else (os.cpu_count() or 1)
+            
+        if n_jobs > 1:
+            print(f"  [PARALLEL] Dang huan luyen {self.n_estimators} cay ({n_jobs} workers)...")
+            with ProcessPoolExecutor(max_workers=n_jobs) as executor:
+                futures = {executor.submit(_train_single_tree, args): args[0] for args in args_list}
+                for future in as_completed(futures):
+                    tree_idx, tree, fi = future.result()
+                    self.estimators_[tree_idx] = tree
+                    self.feature_importances_ += fi
         else:
-            sample_weight = np.ones(n_samples, dtype=float)
-            
-        rng = np.random.RandomState(self.random_state)
+            for i, args in enumerate(args_list):
+                _, tree, fi = _train_single_tree(args)
+                self.estimators_[i] = tree
+                self.feature_importances_ += fi
+                
+        # Tính trung bình feature importance của cả rừng
+        self.feature_importances_ /= self.n_estimators
         
-        self.estimators_ = []
-        for i in range(self.n_estimators):
-            bootstrap_idxs = rng.choice(n_samples, n_samples, replace=True)
-            X_b = X[bootstrap_idxs]
-            y_b = y[bootstrap_idxs]
-            sw_b = sample_weight[bootstrap_idxs]
-            
-            tree_seed = rng.randint(0, 2**31 - 1)
-            tree = DecisionTreeClassifier(
-                max_depth=self.max_depth,
-                min_samples_split=self.min_samples_split,
-                max_features='sqrt',
-                random_state=tree_seed
-            )
-            tree.fit(X_b, y_b, sample_weight=sw_b, classes=self.classes_)
-            self.estimators_.append(tree)
-            
         return self
-        
+
     def predict_proba(self, X):
-        X = np.asarray(X)
-        is_single = False
-        if len(X.shape) == 1:
-            X = X.reshape(1, -1)
-            is_single = True
-            
-        all_tree_probs = []
-        for tree in self.estimators_:
-            all_tree_probs.append(tree.predict_proba(X))
-            
-        avg_probs = np.mean(all_tree_probs, axis=0)
-        return avg_probs
+        # Tự code logic gom nhóm (Aggregation) của Random Forest
+        X = np.asarray(X, dtype=np.float64)
+        all_proba = np.zeros((X.shape[0], self.n_classes_))
         
+        for tree in self.estimators_:
+            all_proba += tree.predict_proba(X)
+            
+        all_proba /= self.n_estimators
+        return all_proba
+
     def predict(self, X):
-        probs = self.predict_proba(X)
-        return np.array([self.classes_[np.argmax(p)] for p in probs])
+        proba = self.predict_proba(X)
+        return self.classes_[np.argmax(proba, axis=1)]
+
+# Alias to avoid breaking references in other files
+RandomForestClassifier = CustomRandomForest
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CẤU HÌNH ĐƯỜNG DẪN MODEL
@@ -507,8 +382,8 @@ def train_and_save_model(dataset_path):
     for t in TARGETS:
         X_tr, X_te, y_tr, y_te = splits[t]
         
-        # Huấn luyện Random Forest Classifier
-        rf_model = RandomForestClassifier(
+        # Huấn luyện Custom Random Forest Classifier
+        rf_model = CustomRandomForest(
             n_estimators=20,
             max_depth=12,
             class_weight='balanced',
