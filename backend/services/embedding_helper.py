@@ -83,7 +83,7 @@ class EmbeddingModel:
         elif face_image.shape[2] == 4:  # BGRA
             face_image = cv2.cvtColor(face_image, cv2.COLOR_BGRA2BGR)
         
-        # Resize về kích thước model
+        # Resize về kích thước model (112x112)
         face_resized = cv2.resize(face_image, target_size)
         
         # Normalize cho MobileFaceNet (quan trọng!): (x - 127.5) / 128.0

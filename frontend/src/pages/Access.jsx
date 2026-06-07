@@ -13,6 +13,7 @@ function Access() {
   const [filter, setFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState("");
   const [liveImage, setLiveImage] = useState(null);
+  const [selectedLogId, setSelectedLogId] = useState(null);
 
   useEffect(() => {
     fetchAccessLogs();
@@ -41,6 +42,7 @@ function Access() {
   }, []);
 
   const latestLog = accessLogs[0];
+  const displayLog = selectedLogId ? accessLogs.find(l => l.id === selectedLogId) || latestLog : latestLog;
 
   const filtered = accessLogs.filter((l) => {
     if (filter !== "ALL" && l.result !== filter) return false;
@@ -80,19 +82,37 @@ function Access() {
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'error.main', animation: 'pulse 2s infinite' }} />
-              <Typography variant="subtitle2" fontWeight="bold" color="error">
-                LIVE RECOGNITION
-              </Typography>
+              {(!selectedLogId || (latestLog && selectedLogId === latestLog.id)) ? (
+                <>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'error.main', animation: 'pulse 2s infinite' }} />
+                  <Typography variant="subtitle2" fontWeight="bold" color="error">
+                    LIVE RECOGNITION
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'primary.main' }} />
+                  <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                    CHI TIẾT LỊCH SỬ
+                  </Typography>
+                  <Button size="small" onClick={() => setSelectedLogId(null)} sx={{ ml: 2, fontSize: '0.7rem' }}>
+                    Quay lại Live
+                  </Button>
+                </>
+              )}
             </Box>
-            <Typography variant="caption" color="textSecondary">Cập nhật mỗi 1 giây</Typography>
+            <Typography variant="caption" color="textSecondary">
+              {(!selectedLogId || (latestLog && selectedLogId === latestLog.id)) ? "Cập nhật mỗi 1 giây" : "Chế độ xem lịch sử"}
+            </Typography>
           </Box>
 
           <Grid container spacing={4} alignItems="center">
             {/* Live Camera Feed */}
             <Grid item xs={12} sm={4} md={3} sx={{ display: 'flex', justifyContent: 'center' }}>
               <Box sx={{ width: 160, height: 160, borderRadius: 1, overflow: 'hidden', bgcolor: 'black', border: `1px solid ${theme.palette.divider}` }}>
-                {liveImage ? (
+                {selectedLogId && selectedLogId !== latestLog?.id ? (
+                  <img src={`/api/access/image/${selectedLogId}`} alt="Snapshot" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : liveImage ? (
                   <img src={liveImage} alt="Live" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
@@ -104,26 +124,26 @@ function Access() {
 
             {/* Latest Result */}
             <Grid item xs={12} sm={8} md={9}>
-              {latestLog ? (
+              {displayLog ? (
                 <Grid container spacing={3}>
                   <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">👤 Nhân vật</Typography>
-                    <Typography variant="subtitle1" fontWeight="bold" color={latestLog.matched_name ? 'textPrimary' : 'error'}>
-                      {latestLog.matched_name || "Không nhận ra"}
+                    <Typography variant="subtitle1" fontWeight="bold" color={displayLog.matched_name ? 'textPrimary' : 'error'}>
+                      {displayLog.matched_name || "Không nhận ra"}
                     </Typography>
                   </Grid>
 
                   <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">📊 Độ chính xác</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle1" fontWeight="bold" color={latestLog.confidence >= 0.65 ? 'success.main' : 'error.main'}>
-                        {(latestLog.confidence * 100).toFixed(1)}%
+                      <Typography variant="subtitle1" fontWeight="bold" color={displayLog.confidence >= 0.65 ? 'success.main' : 'error.main'}>
+                        {(displayLog.confidence * 100).toFixed(1)}%
                       </Typography>
                       <Box sx={{ flex: 1, ml: 1 }}>
                         <LinearProgress 
                           variant="determinate" 
-                          value={latestLog.confidence * 100} 
-                          color={latestLog.confidence >= 0.65 ? 'success' : 'error'}
+                          value={displayLog.confidence * 100} 
+                          color={displayLog.confidence >= 0.65 ? 'success' : 'error'}
                           sx={{ height: 6, borderRadius: 1 }}
                         />
                       </Box>
@@ -134,14 +154,14 @@ function Access() {
                     <Typography variant="caption" color="textSecondary" display="block">⚠️ Kết quả</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                       <Chip 
-                        icon={latestLog.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
-                        label={latestLog.result === "GRANTED" ? "CHO VÀO" : "TỪ CHỐI"} 
-                        color={latestLog.result === "GRANTED" ? "success" : "error"}
+                        icon={displayLog.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
+                        label={displayLog.result === "GRANTED" ? "CHO VÀO" : "TỪ CHỐI"} 
+                        color={displayLog.result === "GRANTED" ? "success" : "error"}
                         variant="outlined"
                         size="small"
                         sx={{ fontWeight: 'bold', borderRadius: 1 }}
                       />
-                      {latestLog.is_alert && (
+                      {displayLog.is_alert && (
                         <Chip 
                           icon={<MdWarning />} 
                           label="Còi" 
@@ -156,7 +176,7 @@ function Access() {
                   <Grid item xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">🕐 Thời gian</Typography>
                     <Typography variant="subtitle2" fontWeight="bold" mt={0.5}>
-                      {new Date(latestLog.timestamp).toLocaleString("vi-VN")}
+                      {new Date(displayLog.timestamp).toLocaleString("vi-VN")}
                     </Typography>
                   </Grid>
                 </Grid>
@@ -251,7 +271,12 @@ function Access() {
               {filtered.map((log) => (
                 <TableRow 
                   key={log.id}
-                  sx={{ '&:hover': { bgcolor: 'action.hover' } }}
+                  onClick={() => setSelectedLogId(log.id)}
+                  sx={{ 
+                    cursor: 'pointer',
+                    bgcolor: selectedLogId === log.id ? 'action.selected' : 'inherit',
+                    '&:hover': { bgcolor: 'action.hover' } 
+                  }}
                 >
                   {/* Ảnh */}
                   <TableCell>

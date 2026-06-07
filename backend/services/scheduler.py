@@ -12,6 +12,7 @@ def check_schedules():
     today    = day_map[now.weekday()]
 
     schedules = Schedule.query.filter_by(is_active=True).all()
+    executed = False
 
     for s in schedules:
         # Kiểm tra đúng giờ và đúng ngày
@@ -37,5 +38,9 @@ def check_schedules():
             mode      = "Schedule",
         )
         db.session.add(log)
+        executed = True
 
-    db.session.commit()
+    if executed:
+        db.session.commit()
+    
+    return executed

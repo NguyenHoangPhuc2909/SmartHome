@@ -53,7 +53,9 @@ scheduler.init_app(app)
 def run_schedules():
     from services.scheduler import check_schedules
     with app.app_context():
-        check_schedules()
+        executed = check_schedules()
+        if executed:
+            socketio.emit("refresh_devices", namespace="/")
 
 # Tối ưu hóa: Ngăn scheduler khởi chạy 2 lần khi debug=True
 if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:

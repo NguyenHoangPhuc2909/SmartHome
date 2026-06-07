@@ -51,6 +51,22 @@ def get_latest_image():
     latest_file = max(files, key=os.path.getctime)
     return send_file(latest_file, mimetype="image/jpeg")
 
+# ── Lấy ảnh theo ID của log ──────────────────────────────────────────────────
+@access_bp.route("/image/<int:log_id>", methods=["GET"])
+def get_log_image(log_id):
+    from flask import send_file
+    log = AccessLog.query.get(log_id)
+    if not log or not log.image_path:
+        return jsonify({"error": "Không tìm thấy ảnh"}), 404
+        
+    base_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    image_full_path = os.path.join(base_dir, log.image_path)
+    
+    if not os.path.exists(image_full_path):
+        return jsonify({"error": "File ảnh không tồn tại"}), 404
+        
+    return send_file(image_full_path, mimetype="image/jpeg")
+
 # ── Webhook từ ESP32-CAM ─────────────────────────────────────────────
 @access_bp.route("/recognize", methods=["POST"])
 def recognize():

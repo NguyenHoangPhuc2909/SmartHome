@@ -115,43 +115,16 @@ def update_sensor():
         db.session.add(DeviceLog(
             device_id=master_sensor.id,
             status=1,
-            mode="AI",
+            mode="Manual",
             temp=temp,
             humi=humi,
             light=light,
             gas=gas,
         ))
 
-        from services.ai import predict_behavior
-        predictions = predict_behavior(temp, humi, light, now)
-
-        for device_id, predicted_status in predictions.items():
-            last_log = (
-                DeviceLog.query
-                .filter_by(device_id=device_id)
-                .order_by(DeviceLog.timestamp.desc())
-                .first()
-            )
-
-            if last_log and last_log.mode == "Manual":
-                continue
-
-            if last_log and last_log.status == predicted_status and last_log.mode == "AI":
-                continue
-
-            db.session.add(DeviceLog(
-                device_id=device_id,
-                status=predicted_status,
-                mode="AI",
-                temp=temp,
-                humi=humi,
-                light=light,
-                gas=gas,
-            ))
-
         db.session.commit()
         socketio.emit("refresh_devices", namespace="/")
-        return jsonify({"status": "ok", "predictions": predictions})
+        return jsonify({"status": "ok", "message": "Đã cập nhật cảm biến"})
 
     except Exception as e:
         traceback.print_exc()
