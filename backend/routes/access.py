@@ -79,6 +79,61 @@ def recognize():
     os.makedirs(Config.RECOG_IMAGES_DIR, exist_ok=True)
     image_file.save(image_path)
 
+    # Nhận diện khuôn mặt & Kiểm tra ảnh thật/giả (Anti-Spoofing)
+    img = cv2.imread(image_path)
+    if img is not None:
+        from services.face_recognition import get_face_crop
+        query_crop = get_face_crop(img)
+        if query_crop is not None:
+            try:
+                from services.liveness import LivenessModel
+                liveness_model = LivenessModel.get_instance()
+                is_live, live_score = liveness_model.check_liveness(query_crop)
+                
+                if not is_live:
+                    # Ảnh giả mạo (Spoofing) -> Từ chối ngay và hú còi báo động!
+                    door_device = Device.query.filter_by(type="door").first()
+                    if not door_device:
+                        door_device = Device(type="door", room="Phòng Khách", name="Cửa chính")
+                        db.session.add(door_device)
+                        db.session.commit()
+                        
+                    log = AccessLog(
+                        device_id          = door_device.id,
+                        matched_dataset_id = None,
+                        image_path         = f"recog_images/{filename}",
+                        confidence         = float(live_score),
+                        result             = "DENIED",
+                        is_alert           = True,
+                    )
+                    db.session.add(log)
+                    
+                    alarm_device = Device.query.filter_by(type="alarm").first()
+                    if not alarm_device:
+                        alarm_device = Device(type="alarm", room="Phòng Khách", name="Còi báo động")
+                        db.session.add(alarm_device)
+                        db.session.commit()
+                        
+                    alarm_log = DeviceLog(
+                        device_id = alarm_device.id,
+                        status    = 1,
+                        mode      = "Alert",
+                    )
+                    db.session.add(alarm_log)
+                    db.session.commit()
+                    
+                    socketio.emit("refresh_access_logs", namespace="/")
+                    socketio.emit("refresh_devices", namespace="/")
+                    
+                    return jsonify({
+                        "result":        "DENIED",
+                        "confidence":    float(live_score),
+                        "matched_name":  "Ảnh giả mạo (Spoofing)!",
+                        "image_path":    f"recog_images/{filename}",
+                    })
+            except Exception as e:
+                print(f"[CẢNH BÁO] Không kiểm tra được liveness, bỏ qua anti-spoofing: {e}")
+
     # Nhận diện khuôn mặt
     from services.face_recognition import recognize_face
     matched_id, confidence = recognize_face(image_path, threshold=Config.FACE_RECOGNITION_THRESHOLD)
