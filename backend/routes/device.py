@@ -191,6 +191,74 @@ def auto_control_devices():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# POST /simulate  — Giả lập tự động kích hoạt thiết bị bằng AI với tham số tùy chỉnh
+# ══════════════════════════════════════════════════════════════════════════════
+@device_bp.route("/simulate", methods=["POST"])
+def simulate_devices():
+    data = request.json or {}
+    try:
+        temp  = float(data.get("temp",  25.0))
+        humi  = float(data.get("humi",  60.0))
+        light = float(data.get("light", 150.0))
+        gas   = float(data.get("gas",   0.0))
+
+        time_str = data.get("time")
+        if time_str:
+            try:
+                dt = datetime.datetime.fromisoformat(time_str)
+            except Exception as ex:
+                print(f"[WARNING] Invalid ISO datetime format: {time_str}, fallback to now. Error: {ex}")
+                dt = datetime.datetime.now()
+        else:
+            dt = datetime.datetime.now()
+
+        from services.ai import predict_behavior, ensure_devices_exist
+        ensure_devices_exist()
+        
+        predictions = predict_behavior(temp, humi, light, dt)
+
+        from models import Device, DeviceLog
+        devices_map = {
+            'PK_den': Device.query.filter_by(type='light', room='living_room').first(),
+            'PK_quat': Device.query.filter_by(type='fan', room='living_room').first(),
+            'PN_den': Device.query.filter_by(type='light', room='bedroom').first(),
+            'PN_quat': Device.query.filter_by(type='fan', room='bedroom').first(),
+        }
+
+        actions = []
+        for key, dev in devices_map.items():
+            if dev:
+                pred_status = predictions.get(dev.id, 0)
+                
+                # Ghi log trạng thái AI cho thiết bị
+                db.session.add(DeviceLog(
+                    device_id=dev.id,
+                    status=pred_status,
+                    mode="AI",
+                    temp=temp,
+                    humi=humi,
+                    light=light,
+                    gas=gas,
+                ))
+                
+                actions.append({
+                    "id": dev.id,
+                    "name": dev.name,
+                    "room": dev.room,
+                    "status": pred_status,
+                    "status_text": "BẬT" if pred_status == 1 else "TẮT"
+                })
+
+        db.session.commit()
+        socketio.emit("refresh_devices", namespace="/")
+        return jsonify({"status": "ok", "actions": actions})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # GET /sensor-history  — Lấy lịch sử cảm biến cho mini-chart
 # ══════════════════════════════════════════════════════════════════════════════
 @device_bp.route("/sensor-history", methods=["GET"])
