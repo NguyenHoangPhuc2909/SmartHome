@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 from flask import Flask, request, jsonify
 from flask_socketio import SocketIO
 from models import db
@@ -47,9 +50,14 @@ app.register_blueprint(access_bp,   url_prefix="/api/access")
 
 # ── Scheduler (chạy schedules) ─────────────────────────────────────────────
 def run_schedules_loop():
+    import time
     from services.scheduler import check_schedules
     while True:
-        socketio.sleep(60)
+        # Thay vì ngủ fix cứng 60s, ta tính số giây còn lại để đến tròn phút tiếp theo
+        current_second = time.localtime().tm_sec
+        sleep_time = 60 - current_second
+        socketio.sleep(sleep_time)
+        
         with app.app_context():
             try:
                 executed = check_schedules()

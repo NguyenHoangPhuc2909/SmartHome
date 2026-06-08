@@ -5,11 +5,10 @@ import traceback
 
 import pandas as pd
 from flask import Blueprint, request, jsonify, session
-from models import db, Device, DeviceLog, User
+from models import db, Device, ActuatorLog, SensorLog, User
 from extensions import socketio
 
 device_bp = Blueprint("device", __name__)
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # GET /  — Lấy danh sách thiết bị
@@ -34,25 +33,36 @@ def get_status():
     devices = Device.query.all()
     result = []
     for d in devices:
-        last_log = (
-            DeviceLog.query
-            .filter_by(device_id=d.id)
-            .order_by(DeviceLog.timestamp.desc())
-            .first()
-        )
-        result.append({
-            "id":     d.id,
-            "name":   d.name,
-            "type":   d.type,
-            "room":   d.room,
-            "sensor_type": d.sensor_type,
-            "status": last_log.status if last_log else 0,
-            "mode":   last_log.mode   if last_log else "AI",
-            "temp":   last_log.temp   if last_log else None,
-            "humi":   last_log.humi   if last_log else None,
-            "light":  last_log.light  if last_log else None,
-            "gas":    last_log.gas    if last_log else None,
-        })
+        if d.type == "sensor":
+            last_log = SensorLog.query.filter_by(device_id=d.id).order_by(SensorLog.timestamp.desc()).first()
+            result.append({
+                "id":     d.id,
+                "name":   d.name,
+                "type":   d.type,
+                "room":   d.room,
+                "sensor_type": d.sensor_type,
+                "status": 1,
+                "mode":   "Manual",
+                "temp":   last_log.temp   if last_log else None,
+                "humi":   last_log.humi   if last_log else None,
+                "light":  last_log.light  if last_log else None,
+                "gas":    last_log.gas    if last_log else None,
+            })
+        else:
+            last_log = ActuatorLog.query.filter_by(device_id=d.id).order_by(ActuatorLog.timestamp.desc()).first()
+            result.append({
+                "id":     d.id,
+                "name":   d.name,
+                "type":   d.type,
+                "room":   d.room,
+                "sensor_type": d.sensor_type,
+                "status": last_log.status if last_log else 0,
+                "mode":   last_log.mode   if last_log else "AI",
+                "temp":   None,
+                "humi":   None,
+                "light":  None,
+                "gas":    None,
+            })
     return jsonify(result)
 
 
@@ -66,20 +76,16 @@ def reset_to_ai():
         count = 0
         for d in devices:
             last_log = (
-                DeviceLog.query
+                ActuatorLog.query
                 .filter_by(device_id=d.id)
-                .order_by(DeviceLog.timestamp.desc())
+                .order_by(ActuatorLog.timestamp.desc())
                 .first()
             )
             if last_log and last_log.mode == "Manual":
-                db.session.add(DeviceLog(
+                db.session.add(ActuatorLog(
                     device_id=d.id,
                     status=last_log.status,
-                    mode="AI",
-                    temp=last_log.temp,
-                    humi=last_log.humi,
-                    light=last_log.light,
-                    gas=last_log.gas,
+                    mode="AI"
                 ))
                 count += 1
         db.session.commit()
@@ -91,7 +97,7 @@ def reset_to_ai():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# POST /sensor  — ESP32 gửi dữ liệu cảm biến, AI dự đoán và ghi log
+# POST /sensor  — ESP32 gửi dữ liệu cảm biến, lưu 1 phút/lần
 # ══════════════════════════════════════════════════════════════════════════════
 @device_bp.route("/sensor", methods=["POST"])
 def update_sensor():
@@ -104,25 +110,33 @@ def update_sensor():
 
         now = datetime.datetime.now()
 
-        # Luôn đảm bảo có 1 thiết bị "Cụm Cảm Biến" để lưu log cảm biến
+        # Luôn đảm bảo có 1 thiết bị "Cụm Cảm Biến"
         master_sensor = Device.query.filter_by(type="sensor", sensor_type="all").first()
         if not master_sensor:
             master_sensor = Device(name="Cụm Cảm Biến", type="sensor", room="Phòng khách", sensor_type="all")
             db.session.add(master_sensor)
             db.session.commit()
 
-        # Lưu log cảm biến vào master_sensor
-        db.session.add(DeviceLog(
-            device_id=master_sensor.id,
-            status=1,
-            mode="Manual",
-            temp=temp,
-            humi=humi,
-            light=light,
-            gas=gas,
-        ))
+        # LOGIC LỌC: Chỉ lưu vào Database nếu log gần nhất cách đây > 60 giây
+        last_log = SensorLog.query.filter_by(device_id=master_sensor.id).order_by(SensorLog.timestamp.desc()).first()
+        should_save = True
+        
+        if last_log:
+            time_diff = (now - last_log.timestamp).total_seconds()
+            if time_diff < 60:
+                should_save = False
 
-        db.session.commit()
+        if should_save:
+            db.session.add(SensorLog(
+                device_id=master_sensor.id,
+                temp=temp,
+                humi=humi,
+                light=light,
+                gas=gas,
+                timestamp=now
+            ))
+            db.session.commit()
+
         socketio.emit("refresh_devices", namespace="/")
         return jsonify({"status": "ok", "message": "Đã cập nhật cảm biến"})
 
@@ -150,7 +164,6 @@ def auto_control_devices():
         
         predictions = predict_behavior(temp, humi, light, now)
 
-        from models import Device, DeviceLog
         devices_map = {
             'PK_den': Device.query.filter_by(type='light', room='living_room').first(),
             'PK_quat': Device.query.filter_by(type='fan', room='living_room').first(),
@@ -164,14 +177,11 @@ def auto_control_devices():
                 pred_status = predictions.get(dev.id, 0)
                 
                 # Ghi log trạng thái AI cho thiết bị
-                db.session.add(DeviceLog(
+                db.session.add(ActuatorLog(
                     device_id=dev.id,
                     status=pred_status,
                     mode="AI",
-                    temp=temp,
-                    humi=humi,
-                    light=light,
-                    gas=gas,
+                    timestamp=now
                 ))
                 
                 actions.append({
@@ -264,12 +274,12 @@ def simulate_devices():
 @device_bp.route("/sensor-history", methods=["GET"])
 def get_sensor_history():
     logs = (
-        db.session.query(DeviceLog)
-        .join(Device, DeviceLog.device_id == Device.id)
+        db.session.query(SensorLog)
+        .join(Device, SensorLog.device_id == Device.id)
         .filter(Device.type == "sensor")
-        .filter(DeviceLog.temp.isnot(None))
-        .order_by(DeviceLog.timestamp.desc())
-        .limit(50)  # Lấy 50 điểm dữ liệu cho mượt
+        .filter(SensorLog.temp.isnot(None))
+        .order_by(SensorLog.timestamp.desc())
+        .limit(50)
         .all()
     )
     
@@ -292,22 +302,15 @@ def control_device(device_id):
     data   = request.json or {}
     status = data.get("status")
     mode   = data.get("mode", "Manual")
-    temp   = data.get("temp")
-    humi   = data.get("humi")
-    light  = data.get("light")
-    gas    = data.get("gas")
 
     if status is None:
         return jsonify({"error": "Thiếu trường 'status'"}), 400
 
-    db.session.add(DeviceLog(
+    db.session.add(ActuatorLog(
         device_id=device_id,
         status=int(status),
         mode=mode,
-        temp=float(temp)  if temp  is not None else 0.0,
-        humi=float(humi)  if humi  is not None else 0.0,
-        light=float(light) if light is not None else 0.0,
-        gas=float(gas)   if gas   is not None else 0.0,
+        timestamp=datetime.datetime.now()
     ))
     db.session.commit()
     socketio.emit("refresh_devices", namespace="/")
@@ -320,39 +323,63 @@ def control_device(device_id):
 @device_bp.route("/<int:device_id>/logs", methods=["GET"])
 def get_logs(device_id):
     limit = request.args.get("limit", 50, type=int)
-    logs  = (
-        DeviceLog.query
-        .filter_by(device_id=device_id)
-        .order_by(DeviceLog.timestamp.desc())
-        .limit(limit)
-        .all()
-    )
-    return jsonify([{
-        "id":        l.id,
-        "status":    l.status,
-        "mode":      l.mode,
-        "temp":      l.temp,
-        "humi":      l.humi,
-        "light":     l.light,
-        "gas":       l.gas,
-        "timestamp": l.timestamp.isoformat(),
-    } for l in logs])
+    
+    # Kiểm tra xem đây là sensor hay actuator
+    device = Device.query.get(device_id)
+    if not device:
+        return jsonify({"error": "Không tìm thấy thiết bị"}), 404
+        
+    if device.type == "sensor":
+        logs = SensorLog.query.filter_by(device_id=device_id).order_by(SensorLog.timestamp.desc()).limit(limit).all()
+        return jsonify([{
+            "id":        l.id,
+            "status":    1,
+            "mode":      "Manual",
+            "temp":      l.temp,
+            "humi":      l.humi,
+            "light":     l.light,
+            "gas":       l.gas,
+            "timestamp": l.timestamp.isoformat(),
+        } for l in logs])
+    else:
+        logs = ActuatorLog.query.filter_by(device_id=device_id).order_by(ActuatorLog.timestamp.desc()).limit(limit).all()
+        return jsonify([{
+            "id":        l.id,
+            "status":    l.status,
+            "mode":      l.mode,
+            "temp":      None,
+            "humi":      None,
+            "light":     None,
+            "gas":       None,
+            "timestamp": l.timestamp.isoformat(),
+        } for l in logs])
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# HELPER: Đường dẫn thư mục trained_models
+# HELPER
 # ══════════════════════════════════════════════════════════════════════════════
 def _models_dir():
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'trained_models')
 
-
 def _clear_old_datasets(directory):
-    """Xóa dataset cũ trước khi lưu cái mới."""
     for f in glob.glob(os.path.join(directory, '*.csv')) + glob.glob(os.path.join(directory, '*.xlsx')):
         try:
             os.remove(f)
         except OSError:
             pass
+
+def _build_result_message(accuracy_results: dict) -> str:
+    lines = ["Huấn luyện AI thành công! Độ chính xác trên tập kiểm thử:"]
+    for key, acc in accuracy_results.items():
+        lines.append(f"{key}: {acc}%")
+    return "\n".join(lines)
+
+def _safe_remove(path: str):
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        pass
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -392,78 +419,103 @@ def handle_train_model():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# POST /train-from-db  — Trích xuất DeviceLog trong DB rồi train
+# POST /train-from-db  — Trích xuất dữ liệu từ DB (Actuator + Sensor) rồi train
 # ══════════════════════════════════════════════════════════════════════════════
 @device_bp.route("/train-from-db", methods=["POST"])
 def train_from_db():
-    records = (
-        db.session.query(DeviceLog, Device)
-        .join(Device, DeviceLog.device_id == Device.id)
-        .filter(DeviceLog.temp.isnot(None))
-        .filter(Device.type.in_(["light", "fan"]))
-        .all()
-    )
-
-    if len(records) < 20:
-        return jsonify({
-            "error": f"Dữ liệu trong Database quá ít ({len(records)} bản ghi). Cần ít nhất 20 bản ghi."
-        }), 400
-
-    days_vn = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ Nhật"]
-
-    data = []
-    for log, device in records:
-        ts = log.timestamp
-        data.append({
-            "Ngày":            ts.strftime("%Y-%m-%d"),
-            "Thứ":             days_vn[ts.weekday()],
-            "Giờ":             ts.hour,
-            "Phút":            ts.minute,
-            "Nhiệt độ (°C)":   log.temp,
-            "Độ ẩm (%)":       log.humi,
-            "Ánh sáng (lux)":  log.light,
-            "Tháng":           ts.month,
-            "Device_ID":       log.device_id,
-            "Tên thiết bị":    device.name,
-            "Phòng":           device.room,
-            "Trạng thái":      log.status,
-            "Trạng thái text": "BẬT" if log.status == 1 else "TẮT",
-        })
-
-    df = pd.DataFrame(data)
-
-    models_dir = _models_dir()
-    os.makedirs(models_dir, exist_ok=True)
-    _clear_old_datasets(models_dir)
-
-    file_path = os.path.join(models_dir, 'latest_dataset.xlsx')
-    df.to_excel(file_path, sheet_name="Dữ liệu thô", index=False)
-
     try:
+        # 1. Lấy dữ liệu cảm biến làm trục thời gian
+        master_sensor = Device.query.filter_by(type="sensor", sensor_type="all").first()
+        if not master_sensor:
+            return jsonify({"error": "Không tìm thấy Cụm Cảm Biến trong cơ sở dữ liệu."}), 400
+            
+        sensor_logs = SensorLog.query.filter_by(device_id=master_sensor.id).order_by(SensorLog.timestamp.asc()).all()
+        if not sensor_logs:
+            return jsonify({"error": "Chưa có dữ liệu cảm biến để huấn luyện."}), 400
+            
+        sensor_data = [{
+            "timestamp": log.timestamp,
+            "nhiet_do": log.temp,
+            "do_am": log.humi,
+            "anh_sang": log.light
+        } for log in sensor_logs]
+        
+        df_sensors = pd.DataFrame(sensor_data)
+        df_sensors['time_key'] = df_sensors['timestamp'].dt.round('1min')
+        df_sensors = df_sensors.groupby('time_key').mean().reset_index()
+
+        # 2. Lấy dữ liệu sự kiện bật/tắt
+        ai_devices = Device.query.filter(
+            Device.type.in_(["light", "fan"]),
+            Device.room.in_(["living_room", "bedroom"])
+        ).all()
+        ai_device_ids = [d.id for d in ai_devices]
+        
+        device_logs = (
+            db.session.query(ActuatorLog, Device)
+            .join(Device, ActuatorLog.device_id == Device.id)
+            .filter(Device.id.in_(ai_device_ids))
+            .order_by(ActuatorLog.timestamp.asc())
+            .all()
+        )
+        
+        events = []
+        for log, device in device_logs:
+            target = None
+            r, t = device.room, device.type
+            if r == "living_room" and t == "light": target = "PK_den"
+            elif r == "living_room" and t == "fan": target = "PK_quat"
+            elif r == "bedroom" and t == "light": target = "PN_den"
+            elif r == "bedroom" and t == "fan": target = "PN_quat"
+            
+            if target:
+                events.append({
+                    "timestamp": log.timestamp,
+                    "target_name": target,
+                    "status": log.status
+                })
+                
+        # 3. Gộp dữ liệu
+        if events:
+            df_events = pd.DataFrame(events)
+            df_events['time_key'] = df_events['timestamp'].dt.round('1min')
+            df_pivot = df_events.pivot_table(index='time_key', columns='target_name', values='status', aggfunc='last').reset_index()
+            df_merged = pd.merge(df_sensors, df_pivot, on='time_key', how='left')
+            
+            # Khởi tạo giá trị ban đầu là 0 nếu cột chưa có dữ liệu tại thời điểm đầu
+            targets_col = ["PK_den", "PK_quat", "PN_den", "PN_quat"]
+            for t in targets_col:
+                if t in df_merged.columns:
+                    # ffill() để điền tiếp nối, fillna(0) cho các giá trị ở đầu (trước khi có sự kiện đầu tiên)
+                    df_merged[t] = df_merged[t].ffill().fillna(0).astype(int)
+                else:
+                    df_merged[t] = 0
+        else:
+            df_merged = df_sensors
+            for t in ["PK_den", "PK_quat", "PN_den", "PN_quat"]:
+                df_merged[t] = 0
+
+        df_merged = df_merged.rename(columns={'time_key': 'timestamp'})
+        
+        if len(df_merged) < 20:
+            return jsonify({
+                "error": f"Dữ liệu trong Database quá ít ({len(df_merged)} phút). Cần ít nhất 20 phút dữ liệu để train."
+            }), 400
+
+        # Xuất ra file Excel
+        models_dir = _models_dir()
+        os.makedirs(models_dir, exist_ok=True)
+        _clear_old_datasets(models_dir)
+
+        file_path = os.path.join(models_dir, 'latest_dataset.xlsx')
+        df_merged.to_excel(file_path, sheet_name="Dữ liệu chuẩn hóa", index=False)
+
         from services.ai import train_and_save_model
         accuracy_results = train_and_save_model(file_path)
         return jsonify({"message": _build_result_message(accuracy_results)}), 200
 
     except Exception as e:
         traceback.print_exc()
-        _safe_remove(file_path)
+        if 'file_path' in locals():
+            _safe_remove(file_path)
         return jsonify({"error": f"Lỗi train từ DB: {str(e)}"}), 500
-
-
-# ══════════════════════════════════════════════════════════════════════════════
-# HELPER FUNCTIONS
-# ══════════════════════════════════════════════════════════════════════════════
-def _build_result_message(accuracy_results: dict) -> str:
-    """Tạo chuỗi thông báo kết quả train để hiển thị trên Frontend."""
-    lines = ["Huấn luyện AI thành công! Độ chính xác trên tập kiểm thử:"]
-    for key, acc in accuracy_results.items():
-        lines.append(f"{key}: {acc}%")
-    return "\n".join(lines)
-
-
-def _safe_remove(path: str):
-    try:
-        if os.path.exists(path):
-            os.remove(path)
-    except OSError:
-        pass

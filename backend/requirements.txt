@@ -11,3 +11,4 @@ openpyxl
 scikit-learn
 onnxruntime
 Flask-SocketIO
+eventlet
