@@ -25,10 +25,15 @@ export default function App() {
   useEffect(() => {
     fetchUser();
 
-    // WebSocket connection
-    const socket = io("/");
+    // WebSocket connection directly to backend
+    const socket = io("http://localhost:5000");
+
+    socket.on("connect", () => {
+      console.log("Socket.IO Connected to Backend!");
+    });
 
     socket.on("refresh_devices", () => {
+      console.log("Socket.IO Received: refresh_devices => Fetching new data...");
       fetchDevices();
     });
 

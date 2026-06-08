@@ -451,3 +451,13 @@ def train_from_db():
         if 'file_path' in locals():
             _safe_remove(file_path)
         return jsonify({"error": f"Lỗi train từ DB: {str(e)}"}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POST /trigger_refresh  — Endpoint nội bộ: Scheduler gọi để emit WebSocket
+# ══════════════════════════════════════════════════════════════════════════════
+@device_bp.route("/trigger_refresh", methods=["POST"])
+def trigger_refresh():
+    """Background scheduler gọi endpoint này để emit refresh_devices từ request context chuẩn"""
+    socketio.emit("refresh_devices", namespace="/")
+    return jsonify({"status": "ok"})
