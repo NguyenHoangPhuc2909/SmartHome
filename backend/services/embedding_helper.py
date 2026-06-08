@@ -26,25 +26,25 @@ class EmbeddingModel:
         
         if os.path.exists(onnx_path):
             model_path = onnx_path
-            print(f"[INFO] Tìm thấy model ONNX: {model_path}")
+            print(f"[INFO] Found ONNX model: {model_path}")
         elif os.path.exists(h5_path):
             model_path = h5_path
-            print(f"[INFO] Tìm thấy model H5: {model_path}")
+            print(f"[INFO] Found H5 model: {model_path}")
             # Nếu chỉ có H5, bạn cần chuyển đổi hoặc báo lỗi
             raise FileNotFoundError(
-                f"Chỉ tìm thấy file H5: {h5_path}\n"
-                f"Vui lòng chuyển đổi sang ONNX trước khi sử dụng onnxruntime.\n"
-                f"Cách chuyển đổi: python -m tf2onnx.convert --keras {h5_path} --output {onnx_path}"
+                f"Only H5 model found: {h5_path}\n"
+                f"Please convert to ONNX before using onnxruntime.\n"
+                f"Conversion: python -m tf2onnx.convert --keras {h5_path} --output {onnx_path}"
             )
         else:
             raise FileNotFoundError(
-                f"Không tìm thấy model ONNX hoặc H5:\n"
+                f"Could not find ONNX or H5 model:\n"
                 f"  - ONNX: {onnx_path}\n"
                 f"  - H5: {h5_path}"
             )
         
         try:
-            print(f"[INFO] Đang load model: {model_path}")
+            print(f"[INFO] Loading model: {model_path}")
             
             # Tạo ONNX Runtime session
             EmbeddingModel._session = ort.InferenceSession(
@@ -60,10 +60,10 @@ class EmbeddingModel:
             input_shape = EmbeddingModel._session.get_inputs()[0].shape
             print(f"[INFO] Model input: {EmbeddingModel._input_name}, shape: {input_shape}")
             print(f"[INFO] Model output: {EmbeddingModel._output_name}")
-            print("[INFO] Model loaded thành công với ONNX Runtime!")
+            print("[INFO] Model loaded successfully with ONNX Runtime!")
             
         except Exception as e:
-            print(f"[ERROR] Không thể load model: {e}")
+            print(f"[ERROR] Could not load model: {e}")
             raise
 
     def extract_embedding(self, face_image: np.ndarray, target_size: tuple = (112, 112)) -> np.ndarray:
@@ -83,7 +83,7 @@ class EmbeddingModel:
         elif face_image.shape[2] == 4:  # BGRA
             face_image = cv2.cvtColor(face_image, cv2.COLOR_BGRA2BGR)
         
-        # Resize về kích thước model
+        # Resize về kích thước model (112x112)
         face_resized = cv2.resize(face_image, target_size)
         
         # Normalize cho MobileFaceNet (quan trọng!): (x - 127.5) / 128.0

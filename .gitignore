@@ -10,3 +10,4 @@ backend/captured_faces/
 backend/recog_images/    
 *.sql
 *.db
+*.md

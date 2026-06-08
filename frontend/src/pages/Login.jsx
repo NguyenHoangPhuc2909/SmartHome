@@ -20,6 +20,7 @@ import {
   Alert
 } from "@mui/material";
 import { Close as CloseIcon } from "@mui/icons-material";
+import HomeImage from '../assets/home.jpg';
 
 function Login() {
   const { user, login, register } = useStore();
@@ -85,110 +86,116 @@ function Login() {
   };
 
   return (
-    <Box sx={{ 
-      minHeight: '100vh', 
-      bgcolor: 'background.default', 
-      display: 'flex', 
-      alignItems: 'center', 
-      pt: { xs: 4, md: 0 },
-      pb: { xs: 4, md: 0 } 
-    }}>
-      <Container maxWidth="sm" sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        {/* Phần Logo và Slogan */}
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', mb: 1 }}>
-            <MdHome size={56} style={{ color: '#1877F2' }} />
-            <Typography 
-              variant="h3" 
-              fontWeight="bold" 
-              color="primary" 
-              sx={{ ml: 1, letterSpacing: '-1px' }}
-            >
-              SmartHome
-            </Typography>
-          </Box>
-          <Typography variant="h6" sx={{ lineHeight: 1.4, color: 'text.primary', fontWeight: 400 }}>
+    <>
+      <Grid container component="main" sx={{ height: '100vh' }}>
+      {/* Phần bên trái: Form */}
+      <Grid 
+        size={{ xs: 12, md: 6 }}
+        sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          justifyContent: 'center', 
+          p: 4, 
+          bgcolor: '#fbfbfb' 
+        }}
+      >
+        <Box sx={{ width: '100%', maxWidth: 400 }}>
+          <Typography variant="h4" fontWeight="500" sx={{ mb: 1, color: '#333' }}>
+            Đăng nhập
+          </Typography>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 4 }}>
             SmartHome giúp bạn kết nối và quản lý mọi thiết bị.
           </Typography>
+
+          <form onSubmit={handleLoginSubmit}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+              <Box>
+                <Typography variant="body2" fontWeight="500" sx={{ mb: 0.5, color: '#555' }}>
+                  Tên đăng nhập
+                </Typography>
+                <TextField
+                  fullWidth
+                  required
+                  placeholder="Nhập tên đăng nhập"
+                  variant="outlined"
+                  size="small"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  sx={{ bgcolor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+                />
+              </Box>
+              <Box>
+                <Typography variant="body2" fontWeight="500" sx={{ mb: 0.5, color: '#555' }}>
+                  Mật khẩu
+                </Typography>
+                <TextField
+                  fullWidth
+                  required
+                  type="password"
+                  placeholder="Nhập mật khẩu"
+                  variant="outlined"
+                  size="small"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  sx={{ bgcolor: '#fff', '& .MuiOutlinedInput-root': { borderRadius: 1 } }}
+                />
+              </Box>
+
+              {loginError && (
+                <Typography variant="body2" color="error" align="center">
+                  {loginError}
+                </Typography>
+              )}
+
+              <Button 
+                type="submit" 
+                variant="contained" 
+                color="primary"
+                disabled={loginLoading}
+                fullWidth
+                disableElevation
+                sx={{ 
+                  py: 1.2, 
+                  fontWeight: 'bold',
+                  textTransform: 'none',
+                  borderRadius: 1
+                }}
+              >
+                {loginLoading ? "Đang đăng nhập..." : "Đăng nhập"}
+              </Button>
+
+              <Button 
+                variant="outlined"
+                color="primary"
+                onClick={() => setOpenRegister(true)}
+                fullWidth
+                sx={{ 
+                  py: 1, 
+                  fontWeight: 'bold',
+                  textTransform: 'none',
+                  borderRadius: 1
+                }}
+              >
+                Tạo tài khoản mới
+              </Button>
+            </Box>
+          </form>
         </Box>
+      </Grid>
 
-        {/* Phần Form Đăng nhập */}
-        <Box sx={{ width: '100%', maxWidth: 400 }}>
-          <Card sx={{ 
-            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
-            border: 'none' }}>
-            <CardContent sx={{ p: { xs: 2.5, sm: 3 }, '&:last-child': { pb: 3 } }}>
-              <form onSubmit={handleLoginSubmit}>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                  <TextField
-                    fullWidth
-                    required
-                    placeholder="Tên đăng nhập"
-                    variant="outlined"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                  />
-                  <TextField
-                    fullWidth
-                    required
-                    type="password"
-                    placeholder="Mật khẩu"
-                    variant="outlined"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  
-                  {loginError && (
-                    <Typography variant="body2" color="error" align="center">
-                      {loginError}
-                    </Typography>
-                  )}
-
-                  <Button 
-                    type="submit" 
-                    variant="contained" 
-                    color="primary" 
-                    size="large"
-                    disabled={loginLoading}
-                    fullWidth
-                    sx={{ py: 1.2, fontSize: '1.1rem', fontWeight: 'bold' }}
-                  >
-                    {loginLoading ? "Đang đăng nhập..." : "Đăng nhập"}
-                  </Button>
-
-                  <Typography variant="body2" color="primary" align="center" sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}>
-                    Quên mật khẩu?
-                  </Typography>
-
-                  <Divider sx={{ my: 1.5 }} />
-
-                  <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                    <Button 
-                      variant="contained" 
-                      color="secondary" 
-                      size="large"
-                      onClick={() => setOpenRegister(true)}
-                      sx={{ 
-                        py: 1.2, 
-                        px: 4,
-                        fontWeight: 'bold', 
-                        fontSize: '1rem',
-                        color: '#fff',
-                        textTransform: 'none'
-                      }}
-                    >
-                      Tạo tài khoản mới
-                    </Button>
-                  </Box>
-                </Box>
-              </form>
-            </CardContent>
-          </Card>
-          <Typography variant="caption" display="block" align="center" color="textSecondary" sx={{ mt: 3 }}>
-            <b>SmartHome</b> dành riêng cho hệ thống mạng nội bộ.
-          </Typography>
-        </Box>
-      </Container>
+      {/* Phần bên phải: Hình ảnh */}
+      <Grid 
+        size={{ xs: 12, md: 6 }}
+        sx={{ 
+          display: { xs: 'none', md: 'block' },
+          backgroundImage: `url(${HomeImage})`,
+          backgroundRepeat: 'no-repeat',
+          backgroundColor: (t) => t.palette.mode === 'light' ? t.palette.grey[50] : t.palette.grey[900],
+          backgroundSize: 'contain',
+          backgroundPosition: 'center',
+        }} 
+      />
+    </Grid>
 
       {/* Modal Đăng Ký */}
       <Dialog 
@@ -196,7 +203,6 @@ function Login() {
         onClose={closeRegisterModal}
         maxWidth="xs"
         fullWidth
-        PaperProps={{ sx: {  } }}
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
@@ -250,13 +256,12 @@ function Login() {
             type="submit" 
             form="register-form"
             variant="contained" 
-            color="secondary" 
+            color="primary" 
             disabled={regLoading}
             sx={{ 
               width: '50%', 
               fontWeight: 'bold', 
               fontSize: '1rem', 
-              color: '#fff',
               textTransform: 'none'
             }}
           >
@@ -264,7 +269,7 @@ function Login() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </>
   );
 }
 

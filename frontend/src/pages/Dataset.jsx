@@ -26,25 +26,25 @@ function Dataset() {
 
   const pollRef = useRef(null);
 
-  useEffect(() => {
-    fetchDatasets();
-    return () => {
-      stopPoll();
-      api.post("/api/datasets/capture/stop").catch(() => { });
-    };
-  }, []);
-
-  const startPoll = useCallback(() => {
-    stopPoll();
-    pollRef.current = setInterval(() => fetchDatasets(), 1500);
-  }, [fetchDatasets]);
-
   const stopPoll = () => {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
   };
+
+  const startPoll = useCallback(() => {
+    stopPoll();
+    pollRef.current = setInterval(() => fetchDatasets(), 1500);
+  }, [fetchDatasets]);
+
+  useEffect(() => {
+    fetchDatasets();
+    return () => {
+      stopPoll();
+      api.post("/api/datasets/capture/stop").catch(() => { });
+    };
+  }, [fetchDatasets]);
 
   const handleAdd = async () => {
     const name = newName.trim();
@@ -130,7 +130,7 @@ function Dataset() {
       )}
 
       {/* Dialog Xoá */}
-      <Dialog open={!!confirmId} onClose={() => setConfirmId(null)} PaperProps={{ sx: {  } }}>
+      <Dialog open={!!confirmId} onClose={() => setConfirmId(null)} slotProps={{ paper: {  sx: {  }  } }}>
         <DialogTitle>Xác nhận xoá</DialogTitle>
         <DialogContent>
           <Typography>Xóa dữ liệu khuôn mặt này? Tất cả ảnh sẽ bị xóa vĩnh viễn và không thể khôi phục.</Typography>

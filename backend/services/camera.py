@@ -2,6 +2,7 @@ import cv2
 import os
 import time
 import threading
+import numpy as np
 from config import Config
 
 # Nhãn tiếng Việt hiển thị trên màn hình
@@ -30,9 +31,9 @@ class VideoCamera(object):
                 top_k=5000
             )
             self.use_yunet = True
-            print("[INFO] Đã kích hoạt YuNet Face Detector!")
+            print("[INFO] Activated YuNet Face Detector!")
         except Exception as e:
-            print(f"[CẢNH BÁO] Không load được YuNet ({e}), dùng lại Haar Cascade.")
+            print(f"[WARNING] Could not load YuNet ({e}), falling back to Haar Cascade.")
             self.use_yunet = False
             self.face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
             self.profile_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_profileface.xml")
@@ -86,7 +87,8 @@ class VideoCamera(object):
             self.detector.setInputSize((w, h))
             _, faces = self.detector.detect(img_bgr)
             if faces is not None and len(faces) > 0:
-                return [face[:4].astype(int) for face in faces if face[-1] > 0.7]
+                # Trả về nguyên list landmarks để dùng cho alignment
+                return [face for face in faces if face[-1] > 0.7]
             return []
         
         if angle == "Thang":
@@ -164,24 +166,48 @@ class VideoCamera(object):
         if len(boxes) > 0:
             # Chọn box gần tâm nhất
             best, best_d = None, float("inf")
-            for (x, y, w, h) in boxes:
+            for face in boxes:
+                x, y, w, h = int(face[0]), int(face[1]), int(face[2]), int(face[3])
                 d = abs((x + w // 2) - center_x) + abs((y + h // 2) - center_y)
-                if d < best_d: best_d, best = d, (x, y, w, h)
+                if d < best_d: best_d, best = d, face
             
-            x, y, w, h = best
+            x, y, w, h = int(best[0]), int(best[1]), int(best[2]), int(best[3])
             cv2.rectangle(img, (x, y), (x+w, y+h), (60, 60, 255), 2)
             if abs((x+w//2)-center_x) < 70 and abs((y+h//2)-center_y) < 70 and w > 100:
-                is_ready, save_box = True, (x, y, w, h)
+                is_ready, save_box = True, best
                 cv2.rectangle(img, (x, y), (x+w, y+h), (0, 255, 80), 3)
                 color = (0, 255, 80)
                 msg = "Giu nguyen!"
 
         # ── Lưu ảnh ──
-        if self.is_capturing and is_ready and save_box:
+        if self.is_capturing and is_ready and save_box is not None:
             if now - self.last_save_time > 0.8:
-                sx, sy, sw, sh = save_box
-                face_crop = img[sy:sy+sh, sx:sx+sw]
-                if face_crop.size > 0:
+                x, y, w, h = save_box[:4].astype(int)
+                cx, cy = x + w // 2, y + h // 2
+                size = int(max(w, h) * 1.1) # Padding 10%
+                
+                img_to_crop = img
+                if len(save_box) >= 14:
+                    re_x, re_y = save_box[4], save_box[5]
+                    le_x, le_y = save_box[6], save_box[7]
+                    if re_x > le_x:
+                        re_x, re_y, le_x, le_y = le_x, le_y, re_x, re_y
+                    dx = le_x - re_x
+                    dy = le_y - re_y
+                    if dx > 0:
+                        angle = np.degrees(np.arctan2(dy, dx))
+                        if abs(angle) < 45:
+                            M = cv2.getRotationMatrix2D((float(cx), float(cy)), angle, 1.0)
+                            img_to_crop = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), flags=cv2.INTER_CUBIC)
+                
+                new_x = max(0, cx - size // 2)
+                new_y = max(0, cy - size // 2)
+                new_x_end = min(img_to_crop.shape[1], new_x + size)
+                new_y_end = min(img_to_crop.shape[0], new_y + size)
+                
+                face_crop = img_to_crop[new_y:new_y_end, new_x:new_x_end]
+                
+                if face_crop is not None and face_crop.size > 0:
                     face_resized = cv2.resize(face_crop, (112, 112))
                     cv2.imwrite(os.path.join(path, f"{current_angle}_{current_count}.jpg"), face_resized)
                     self.last_save_time = now

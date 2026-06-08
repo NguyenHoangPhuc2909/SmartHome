@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
-import { MdCheckCircle, MdCancel, MdWarning, MdRefresh, MdFilterList } from "react-icons/md";
+import { useEffect, useState, useRef } from "react";
+import { MdCheckCircle, MdCancel, MdWarning, MdRefresh, MdFilterList, MdPhotoCamera, MdClose } from "react-icons/md";
 import useStore from "../store";
 import {
   Box, Typography, Button, Card, CardContent, Grid, TextField,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
-  Paper, Chip, LinearProgress, useTheme, Alert
+  Paper, Chip, LinearProgress, useTheme, Alert,
+  Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, IconButton
 } from "@mui/material";
 
 function Access() {
@@ -13,11 +14,102 @@ function Access() {
   const [filter, setFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState("");
   const [liveImage, setLiveImage] = useState(null);
+  const [selectedLogId, setSelectedLogId] = useState(null);
+
+  // Camera state & ref
+  const [showCameraDialog, setShowCameraDialog] = useState(false);
+  const [cameraStream, setCameraStream] = useState(null);
+  const [verifying, setVerifying] = useState(false);
+  const [verificationResult, setVerificationResult] = useState(null);
+  const videoRef = useRef(null);
+
+  const startCamera = async () => {
+    setVerificationResult(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { width: 320, height: 320, facingMode: "user" } 
+      });
+      setCameraStream(stream);
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      alert("Không thể truy cập camera laptop/điện thoại của bạn. Vui lòng đảm bảo trình duyệt đã được cấp quyền camera và trang web chạy trên kết nối bảo mật (HTTPS hoặc localhost).");
+      setShowCameraDialog(false);
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+  };
+
+  const handleOpenDialog = () => {
+    setShowCameraDialog(true);
+    setTimeout(startCamera, 100);
+  };
+
+  const handleCloseDialog = () => {
+    stopCamera();
+    setShowCameraDialog(false);
+    setVerificationResult(null);
+  };
+
+  const captureAndVerify = async () => {
+    if (!videoRef.current) return;
+    setVerifying(true);
+    setVerificationResult(null);
+    
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext("2d");
+      // Flip canvas to match mirror effect of video
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      
+      canvas.toBlob(async (blob) => {
+        if (!blob) {
+          setVerifying(false);
+          return;
+        }
+        
+        const formData = new FormData();
+        formData.append("image", blob, "capture.jpg");
+        
+        try {
+          const response = await fetch("/api/access/recognize", {
+            method: "POST",
+            body: formData,
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            setVerificationResult(data);
+            fetchAccessLogs(); // refresh the logs list behind the modal
+          } else {
+            setVerificationResult({ error: "Xác thực không thành công. Hãy thử lại." });
+          }
+        } catch (err) {
+          console.error("Verification error:", err);
+          setVerificationResult({ error: "Lỗi kết nối máy chủ khi xác thực" });
+        } finally {
+          setVerifying(false);
+        }
+      }, "image/jpeg", 0.95);
+    } catch (err) {
+      console.error("Capture error:", err);
+      setVerifying(false);
+    }
+  };
 
   useEffect(() => {
     fetchAccessLogs();
-    const interval = setInterval(fetchAccessLogs, 5000);
-    return () => clearInterval(interval);
   }, []);
 
   useEffect(() => {
@@ -43,6 +135,7 @@ function Access() {
   }, []);
 
   const latestLog = accessLogs[0];
+  const displayLog = selectedLogId ? accessLogs.find(l => l.id === selectedLogId) || latestLog : latestLog;
 
   const filtered = accessLogs.filter((l) => {
     if (filter !== "ALL" && l.result !== filter) return false;
@@ -67,14 +160,25 @@ function Access() {
             Lịch sử nhận diện khuôn mặt tại cửa và các cảnh báo.
           </Typography>
         </Box>
-        <Button 
-          variant="outlined" 
-          startIcon={<MdRefresh />}
-          onClick={fetchAccessLogs}
-          sx={{ fontWeight: 'bold' }}
-        >
-          Làm mới
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button 
+            variant="contained" 
+            color="primary"
+            startIcon={<MdPhotoCamera />}
+            onClick={handleOpenDialog}
+            sx={{ fontWeight: 'bold' }}
+          >
+            Xác thực khuôn mặt (Cam)
+          </Button>
+          <Button 
+            variant="outlined" 
+            startIcon={<MdRefresh />}
+            onClick={fetchAccessLogs}
+            sx={{ fontWeight: 'bold' }}
+          >
+            Làm mới
+          </Button>
+        </Box>
       </Box>
 
       {/* Live Widget */}
@@ -82,19 +186,37 @@ function Access() {
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'error.main', animation: 'pulse 2s infinite' }} />
-              <Typography variant="subtitle2" fontWeight="bold" color="error">
-                LIVE RECOGNITION
-              </Typography>
+              {(!selectedLogId || (latestLog && selectedLogId === latestLog.id)) ? (
+                <>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'error.main', animation: 'pulse 2s infinite' }} />
+                  <Typography variant="subtitle2" fontWeight="bold" color="error">
+                    LIVE RECOGNITION
+                  </Typography>
+                </>
+              ) : (
+                <>
+                  <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: 'primary.main' }} />
+                  <Typography variant="subtitle2" fontWeight="bold" color="primary">
+                    CHI TIẾT LỊCH SỬ
+                  </Typography>
+                  <Button size="small" onClick={() => setSelectedLogId(null)} sx={{ ml: 2, fontSize: '0.7rem' }}>
+                    Quay lại Live
+                  </Button>
+                </>
+              )}
             </Box>
-            <Typography variant="caption" color="textSecondary">Cập nhật mỗi 1 giây</Typography>
+            <Typography variant="caption" color="textSecondary">
+              {(!selectedLogId || (latestLog && selectedLogId === latestLog.id)) ? "Cập nhật mỗi 1 giây" : "Chế độ xem lịch sử"}
+            </Typography>
           </Box>
 
-          <Grid container spacing={4} alignItems="center">
+          <Grid container spacing={4} sx={{ alignItems: 'center' }}>
             {/* Live Camera Feed */}
-            <Grid item xs={12} sm={4} md={3} sx={{ display: 'flex', justifyContent: 'center' }}>
+            <Grid xs={12} sm={4} md={3} sx={{ display: 'flex', justifyContent: 'center' }}>
               <Box sx={{ width: 160, height: 160, borderRadius: 1, overflow: 'hidden', bgcolor: 'black', border: `1px solid ${theme.palette.divider}` }}>
-                {liveImage ? (
+                {selectedLogId && selectedLogId !== latestLog?.id ? (
+                  <img src={`/api/access/image/${selectedLogId}`} alt="Snapshot" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : liveImage ? (
                   <img src={liveImage} alt="Live" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 ) : (
                   <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'text.secondary' }}>
@@ -105,45 +227,45 @@ function Access() {
             </Grid>
 
             {/* Latest Result */}
-            <Grid item xs={12} sm={8} md={9}>
-              {latestLog ? (
+            <Grid xs={12} sm={8} md={9}>
+              {displayLog ? (
                 <Grid container spacing={3}>
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">👤 Nhân vật</Typography>
-                    <Typography variant="subtitle1" fontWeight="bold" color={latestLog.matched_name ? 'textPrimary' : 'error'}>
-                      {latestLog.matched_name || "Không nhận ra"}
+                    <Typography variant="subtitle1" fontWeight="bold" color={displayLog.matched_name ? 'textPrimary' : 'error'}>
+                      {displayLog.matched_name || "Không nhận ra"}
                     </Typography>
                   </Grid>
 
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">📊 Độ chính xác</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle1" fontWeight="bold" color={latestLog.confidence >= 0.65 ? 'success.main' : 'error.main'}>
-                        {(latestLog.confidence * 100).toFixed(1)}%
+                      <Typography variant="subtitle1" fontWeight="bold" color={displayLog.confidence >= 0.65 ? 'success.main' : 'error.main'}>
+                        {(displayLog.confidence * 100).toFixed(1)}%
                       </Typography>
                       <Box sx={{ flex: 1, ml: 1 }}>
                         <LinearProgress 
                           variant="determinate" 
-                          value={latestLog.confidence * 100} 
-                          color={latestLog.confidence >= 0.65 ? 'success' : 'error'}
+                          value={displayLog.confidence * 100} 
+                          color={displayLog.confidence >= 0.65 ? 'success' : 'error'}
                           sx={{ height: 6, borderRadius: 1 }}
                         />
                       </Box>
                     </Box>
                   </Grid>
 
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">⚠️ Kết quả</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
                       <Chip 
-                        icon={latestLog.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
-                        label={latestLog.result === "GRANTED" ? "CHO VÀO" : "TỪ CHỐI"} 
-                        color={latestLog.result === "GRANTED" ? "success" : "error"}
+                        icon={displayLog.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
+                        label={displayLog.result === "GRANTED" ? "CHO VÀO" : "TỪ CHỐI"} 
+                        color={displayLog.result === "GRANTED" ? "success" : "error"}
                         variant="outlined"
                         size="small"
                         sx={{ fontWeight: 'bold', borderRadius: 1 }}
                       />
-                      {latestLog.is_alert && (
+                      {displayLog.is_alert && (
                         <Chip 
                           icon={<MdWarning />} 
                           label="Còi" 
@@ -155,10 +277,10 @@ function Access() {
                     </Box>
                   </Grid>
 
-                  <Grid item xs={12} sm={6} md={3}>
+                  <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">🕐 Thời gian</Typography>
                     <Typography variant="subtitle2" fontWeight="bold" mt={0.5}>
-                      {new Date(latestLog.timestamp).toLocaleString("vi-VN")}
+                      {new Date(displayLog.timestamp).toLocaleString("vi-VN")}
                     </Typography>
                   </Grid>
                 </Grid>
@@ -253,7 +375,12 @@ function Access() {
               {filtered.map((log) => (
                 <TableRow 
                   key={log.id}
-                  sx={{ '&:hover': { bgcolor: 'action.hover' } }}
+                  onClick={() => setSelectedLogId(log.id)}
+                  sx={{ 
+                    cursor: 'pointer',
+                    bgcolor: selectedLogId === log.id ? 'action.selected' : 'inherit',
+                    '&:hover': { bgcolor: 'action.hover' } 
+                  }}
                 >
                   {/* Ảnh */}
                   <TableCell>
@@ -336,6 +463,139 @@ function Access() {
           </Table>
         </TableContainer>
       </Card>
+
+      {/* Camera Dialog */}
+      <Dialog 
+        open={showCameraDialog} 
+        onClose={handleCloseDialog}
+        maxWidth="xs"
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: 'hidden'
+          }
+        }}
+      >
+        <DialogTitle sx={{ m: 0, p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" fontWeight="bold">Xác thực khuôn mặt</Typography>
+          <IconButton
+            aria-label="close"
+            onClick={handleCloseDialog}
+            sx={{
+              color: (theme) => theme.palette.grey[500],
+            }}
+          >
+            <MdClose />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 2 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            {/* Camera Preview Box */}
+            <Box 
+              sx={{ 
+                width: '100%', 
+                aspectRatio: '1/1', 
+                maxWidth: 320,
+                borderRadius: 2, 
+                overflow: 'hidden', 
+                bgcolor: 'black', 
+                position: 'relative',
+                border: `1px solid ${theme.palette.divider}`,
+                boxShadow: theme.shadows[3]
+              }}
+            >
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  transform: 'scaleX(-1)' // Mirror for natural look
+                }}
+              />
+              
+              {verifying && (
+                <Box 
+                  sx={{ 
+                    position: 'absolute', 
+                    top: 0, 
+                    left: 0, 
+                    width: '100%', 
+                    height: '100%', 
+                    bgcolor: 'rgba(0,0,0,0.6)', 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    gap: 1,
+                    color: 'white',
+                    zIndex: 2
+                  }}
+                >
+                  <CircularProgress color="inherit" />
+                  <Typography variant="body2" fontWeight="medium">Đang xác thực...</Typography>
+                </Box>
+              )}
+            </Box>
+
+            {/* Results Display */}
+            {verificationResult && (
+              <Box sx={{ width: '100%' }}>
+                {verificationResult.error ? (
+                  <Alert severity="error" sx={{ borderRadius: 2 }}>
+                    {verificationResult.error}
+                  </Alert>
+                ) : (
+                  <Alert 
+                    severity={verificationResult.result === "GRANTED" ? "success" : "error"}
+                    icon={verificationResult.result === "GRANTED" ? <MdCheckCircle fontSize="inherit" /> : <MdCancel fontSize="inherit" />}
+                    sx={{ borderRadius: 2 }}
+                  >
+                    <Typography variant="subtitle2" fontWeight="bold">
+                      {verificationResult.result === "GRANTED" ? "ĐÃ CẤP QUYỀN TRUY CẬP" : "TỪ CHỐI TRUY CẬP"}
+                    </Typography>
+                    <Box sx={{ mt: 1 }}>
+                      <Typography variant="body2">
+                        👤 Người: <strong>{verificationResult.matched_name || "Không nhận dạng được"}</strong>
+                      </Typography>
+                      {verificationResult.confidence !== undefined && (
+                        <Typography variant="body2">
+                          📊 Độ tin cậy: <strong>{(verificationResult.confidence * 100).toFixed(1)}%</strong>
+                        </Typography>
+                      )}
+                    </Box>
+                  </Alert>
+                )}
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button 
+            onClick={handleCloseDialog} 
+            color="inherit"
+            variant="text"
+            sx={{ fontWeight: 'bold' }}
+            disabled={verifying}
+          >
+            Đóng
+          </Button>
+          <Button
+            onClick={captureAndVerify}
+            variant="contained"
+            color="primary"
+            startIcon={verifying ? <CircularProgress size={20} color="inherit" /> : <MdPhotoCamera />}
+            disabled={verifying || !cameraStream}
+            sx={{ fontWeight: 'bold' }}
+          >
+            {verifying ? "Đang xử lý..." : "Chụp & Xác thực"}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, session
-from models import db, AccessLog, FaceDataset, Device, DeviceLog, User
+from models import db, AccessLog, FaceDataset, Device, ActuatorLog, User
+from extensions import socketio
 from config import Config
 import os, datetime
 import onnxruntime as ort
@@ -50,6 +51,22 @@ def get_latest_image():
     latest_file = max(files, key=os.path.getctime)
     return send_file(latest_file, mimetype="image/jpeg")
 
+# ── Lấy ảnh theo ID của log ──────────────────────────────────────────────────
+@access_bp.route("/image/<int:log_id>", methods=["GET"])
+def get_log_image(log_id):
+    from flask import send_file
+    log = AccessLog.query.get(log_id)
+    if not log or not log.image_path:
+        return jsonify({"error": "Không tìm thấy ảnh"}), 404
+        
+    base_dir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
+    image_full_path = os.path.join(base_dir, log.image_path)
+    
+    if not os.path.exists(image_full_path):
+        return jsonify({"error": "File ảnh không tồn tại"}), 404
+        
+    return send_file(image_full_path, mimetype="image/jpeg")
+
 # ── Webhook từ ESP32-CAM ─────────────────────────────────────────────
 @access_bp.route("/recognize", methods=["POST"])
 def recognize():
@@ -97,7 +114,7 @@ def recognize():
 
     # Nếu GRANTED → ghi log mở cửa
     if result == "GRANTED":
-        device_log = DeviceLog(
+        device_log = ActuatorLog(
             device_id = door_device.id,
             status    = 1,
             mode      = "Auto",
@@ -112,7 +129,7 @@ def recognize():
             db.session.add(alarm_device)
             db.session.commit()
             
-        alarm_log = DeviceLog(
+        alarm_log = ActuatorLog(
             device_id = alarm_device.id,
             status    = 1,
             mode      = "Alert",
@@ -120,6 +137,8 @@ def recognize():
         db.session.add(alarm_log)
 
     db.session.commit()
+    socketio.emit("refresh_access_logs", namespace="/")
+    socketio.emit("refresh_devices", namespace="/")
 
     return jsonify({
         "result":        result,
