@@ -33,7 +33,7 @@ class LivenessModel:
             print(f"[ERROR] Failed to load ONNX liveness model: {e}")
             raise
 
-    def check_liveness(self, face_image: np.ndarray, threshold: float = 0.95) -> tuple:
+    def check_liveness(self, face_image: np.ndarray, threshold: float = 0.875) -> tuple:
         """
         Kiểm tra ảnh thật/giả sử dụng model anti-spoofing MobileNetV3-Large.
         Đầu vào: face_image (ảnh cắt khuôn mặt, dạng BGR từ OpenCV).
@@ -60,18 +60,39 @@ class LivenessModel:
             batch = np.expand_dims(img_resized, axis=0).astype(np.float32)
             
             # 4. Chạy inference
-            preds = self._session.run(None, {self._input_name: batch})
-            
-            # Tìm output node 'live_score' bằng tên của nó
             output_names = [o.name for o in self._session.get_outputs()]
-            if "live_score" in output_names:
-                live_score_idx = output_names.index("live_score")
-                live_score = float(preds[live_score_idx][0][0])
-            else:
-                # Nếu không khớp tên, fallback về output đầu tiên
-                live_score = float(preds[0][0][0])
+            preds = self._session.run(output_names, {self._input_name: batch})
+            
+            # Khởi tạo giá trị mặc định
+            live_score = 0.0
+            prob_spoof = 1.0
+            
+            if "binary" in output_names:
+                binary_idx = output_names.index("binary")
+                binary_logits = preds[binary_idx]
+                # Tính Softmax
+                exp_logits = np.exp(binary_logits - np.max(binary_logits, axis=-1, keepdims=True))
+                probs = exp_logits / np.sum(exp_logits, axis=-1, keepdims=True)
+                prob_spoof = float(probs[0, 1])
+                live_score = 1.0 - prob_spoof
                 
-            is_live = live_score >= threshold
+                # Predict attack type nếu có head 'type'
+                if "type" in output_names:
+                    type_idx = output_names.index("type")
+                    type_logits = preds[type_idx]
+                    exp_type = np.exp(type_logits - np.max(type_logits, axis=-1, keepdims=True))
+                    type_probs = exp_type / np.sum(exp_type, axis=-1, keepdims=True)
+                    attack_type = "print" if type_probs[0, 0] >= type_probs[0, 1] else "replay"
+                    print(f"[INFO] Liveness: prob_spoof={prob_spoof:.4f}, live_score={live_score:.4f}, attack_type={attack_type}")
+                else:
+                    print(f"[INFO] Liveness: prob_spoof={prob_spoof:.4f}, live_score={live_score:.4f}")
+            else:
+                # Fallback cho model cũ hoặc cấu trúc khác
+                live_score = float(preds[0][0][0])
+                prob_spoof = 1.0 - live_score
+                print(f"[INFO] Liveness fallback: live_score={live_score:.4f}")
+                
+            is_live = prob_spoof < threshold
             return is_live, live_score
             
         except Exception as e:

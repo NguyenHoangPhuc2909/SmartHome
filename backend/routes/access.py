@@ -82,13 +82,13 @@ def recognize():
     # Nhận diện khuôn mặt & Kiểm tra ảnh thật/giả (Anti-Spoofing)
     img = cv2.imread(image_path)
     if img is not None:
-        from services.face_recognition import get_face_crop
-        query_crop = get_face_crop(img)
-        if query_crop is not None:
+        from services.face_recognition import crop_face_liveness
+        liveness_crop = crop_face_liveness(img, scale=1.45)
+        if liveness_crop is not None:
             try:
                 from services.liveness import LivenessModel
                 liveness_model = LivenessModel.get_instance()
-                is_live, live_score = liveness_model.check_liveness(query_crop)
+                is_live, live_score = liveness_model.check_liveness(liveness_crop)
                 
                 if not is_live:
                     # Ảnh giả mạo (Spoofing) -> Từ chối ngay và hú còi báo động!
