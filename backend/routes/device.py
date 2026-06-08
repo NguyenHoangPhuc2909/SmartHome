@@ -227,7 +227,20 @@ def simulate_devices():
         
         predictions = predict_behavior(temp, humi, light, dt)
 
-        from models import Device, DeviceLog
+        from models import Device, ActuatorLog, SensorLog
+        
+        # Ghi nhận chỉ số cảm biến giả lập vào SensorLog (cho cụm cảm biến)
+        master_sensor = Device.query.filter_by(type="sensor", sensor_type="all").first()
+        if master_sensor:
+            db.session.add(SensorLog(
+                device_id=master_sensor.id,
+                temp=temp,
+                humi=humi,
+                light=light,
+                gas=gas,
+                timestamp=dt
+            ))
+
         devices_map = {
             'PK_den': Device.query.filter_by(type='light', room='living_room').first(),
             'PK_quat': Device.query.filter_by(type='fan', room='living_room').first(),
@@ -240,15 +253,12 @@ def simulate_devices():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
-                # Ghi log trạng thái AI cho thiết bị
-                db.session.add(DeviceLog(
+                # Ghi log trạng thái AI cho thiết bị vào ActuatorLog
+                db.session.add(ActuatorLog(
                     device_id=dev.id,
                     status=pred_status,
                     mode="AI",
-                    temp=temp,
-                    humi=humi,
-                    light=light,
-                    gas=gas,
+                    timestamp=dt
                 ))
                 
                 actions.append({
@@ -361,12 +371,16 @@ def get_logs(device_id):
 def _models_dir():
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'trained_models')
 
-def _clear_old_datasets(directory):
-    for f in glob.glob(os.path.join(directory, '*.csv')) + glob.glob(os.path.join(directory, '*.xlsx')):
-        try:
-            os.remove(f)
-        except OSError:
-            pass
+def _clear_upload_dataset(directory):
+    for ext in ['.csv', '.xlsx']:
+        path = os.path.join(directory, f'latest_upload_dataset{ext}')
+        _safe_remove(path)
+
+def _clear_db_dataset(directory):
+    for ext in ['.csv', '.xlsx']:
+        path = os.path.join(directory, f'latest_db_dataset{ext}')
+        _safe_remove(path)
+
 
 def _build_result_message(accuracy_results: dict) -> str:
     lines = ["Huấn luyện AI thành công! Độ chính xác trên tập kiểm thử:"]
@@ -398,13 +412,12 @@ def handle_train_model():
     is_xlsx = file.filename.endswith('.xlsx')
     if not (is_csv or is_xlsx):
         return jsonify({"error": "Chỉ hỗ trợ định dạng .csv hoặc .xlsx"}), 400
-
     models_dir = _models_dir()
     os.makedirs(models_dir, exist_ok=True)
-    _clear_old_datasets(models_dir)
+    _clear_upload_dataset(models_dir)
 
     ext       = '.csv' if is_csv else '.xlsx'
-    file_path = os.path.join(models_dir, f'latest_dataset{ext}')
+    file_path = os.path.join(models_dir, f'latest_upload_dataset{ext}')
     file.save(file_path)
 
     try:
@@ -505,9 +518,9 @@ def train_from_db():
         # Xuất ra file Excel
         models_dir = _models_dir()
         os.makedirs(models_dir, exist_ok=True)
-        _clear_old_datasets(models_dir)
+        _clear_db_dataset(models_dir)
 
-        file_path = os.path.join(models_dir, 'latest_dataset.xlsx')
+        file_path = os.path.join(models_dir, 'latest_db_dataset.xlsx')
         df_merged.to_excel(file_path, sheet_name="Dữ liệu chuẩn hóa", index=False)
 
         from services.ai import train_and_save_model
