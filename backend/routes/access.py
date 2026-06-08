@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, session
-from models import db, AccessLog, FaceDataset, Device, DeviceLog, User
+from models import db, AccessLog, FaceDataset, Device, ActuatorLog, User
 from extensions import socketio
 from config import Config
 import os, datetime
@@ -114,7 +114,7 @@ def recognize():
 
     # Nếu GRANTED → ghi log mở cửa
     if result == "GRANTED":
-        device_log = DeviceLog(
+        device_log = ActuatorLog(
             device_id = door_device.id,
             status    = 1,
             mode      = "Auto",
@@ -129,7 +129,7 @@ def recognize():
             db.session.add(alarm_device)
             db.session.commit()
             
-        alarm_log = DeviceLog(
+        alarm_log = ActuatorLog(
             device_id = alarm_device.id,
             status    = 1,
             mode      = "Alert",

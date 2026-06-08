@@ -1,11 +1,11 @@
-from models import db, Schedule, DeviceLog
+from models import db, Schedule, ActuatorLog
 import datetime
 
 
 def check_schedules():
     """
     Chạy mỗi 60 giây — kiểm tra schedule nào khớp giờ hiện tại
-    rồi ghi vào device_logs với mode = Schedule.
+    rồi ghi vào actuator_logs với mode = Schedule.
     """
     now      = datetime.datetime.now()
     day_map  = {0: "mon", 1: "tue", 2: "wed", 3: "thu", 4: "fri", 5: "sat", 6: "sun"}
@@ -22,17 +22,17 @@ def check_schedules():
             continue
 
         # Tránh ghi log 2 lần trong cùng 1 phút
-        already_logged = DeviceLog.query.filter_by(
+        already_logged = ActuatorLog.query.filter_by(
             device_id = s.device_id,
             mode      = "Schedule",
         ).filter(
-            DeviceLog.timestamp >= now.replace(second=0, microsecond=0)
+            ActuatorLog.timestamp >= now.replace(second=0, microsecond=0)
         ).first()
 
         if already_logged:
             continue
 
-        log = DeviceLog(
+        log = ActuatorLog(
             device_id = s.device_id,
             status    = s.action,
             mode      = "Schedule",
