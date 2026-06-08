@@ -201,6 +201,84 @@ def auto_control_devices():
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# POST /simulate  — Giả lập tự động kích hoạt thiết bị bằng AI với tham số tùy chỉnh
+# ══════════════════════════════════════════════════════════════════════════════
+@device_bp.route("/simulate", methods=["POST"])
+def simulate_devices():
+    data = request.json or {}
+    try:
+        temp  = float(data.get("temp",  25.0))
+        humi  = float(data.get("humi",  60.0))
+        light = float(data.get("light", 150.0))
+        gas   = float(data.get("gas",   0.0))
+
+        time_str = data.get("time")
+        if time_str:
+            try:
+                dt = datetime.datetime.fromisoformat(time_str)
+            except Exception as ex:
+                print(f"[WARNING] Invalid ISO datetime format: {time_str}, fallback to now. Error: {ex}")
+                dt = datetime.datetime.now()
+        else:
+            dt = datetime.datetime.now()
+
+        from services.ai import predict_behavior, ensure_devices_exist
+        ensure_devices_exist()
+        
+        predictions = predict_behavior(temp, humi, light, dt)
+
+        from models import Device, ActuatorLog, SensorLog
+        
+        # Ghi nhận chỉ số cảm biến giả lập vào SensorLog (cho cụm cảm biến)
+        master_sensor = Device.query.filter_by(type="sensor", sensor_type="all").first()
+        if master_sensor:
+            db.session.add(SensorLog(
+                device_id=master_sensor.id,
+                temp=temp,
+                humi=humi,
+                light=light,
+                gas=gas,
+                timestamp=dt
+            ))
+
+        devices_map = {
+            'PK_den': Device.query.filter_by(type='light', room='living_room').first(),
+            'PK_quat': Device.query.filter_by(type='fan', room='living_room').first(),
+            'PN_den': Device.query.filter_by(type='light', room='bedroom').first(),
+            'PN_quat': Device.query.filter_by(type='fan', room='bedroom').first(),
+        }
+
+        actions = []
+        for key, dev in devices_map.items():
+            if dev:
+                pred_status = predictions.get(dev.id, 0)
+                
+                # Ghi log trạng thái AI cho thiết bị vào ActuatorLog
+                db.session.add(ActuatorLog(
+                    device_id=dev.id,
+                    status=pred_status,
+                    mode="AI",
+                    timestamp=dt
+                ))
+                
+                actions.append({
+                    "id": dev.id,
+                    "name": dev.name,
+                    "room": dev.room,
+                    "status": pred_status,
+                    "status_text": "BẬT" if pred_status == 1 else "TẮT"
+                })
+
+        db.session.commit()
+        socketio.emit("refresh_devices", namespace="/")
+        return jsonify({"status": "ok", "actions": actions})
+
+    except Exception as e:
+        traceback.print_exc()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # GET /sensor-history  — Lấy lịch sử cảm biến cho mini-chart
 # ══════════════════════════════════════════════════════════════════════════════
 @device_bp.route("/sensor-history", methods=["GET"])
@@ -293,12 +371,16 @@ def get_logs(device_id):
 def _models_dir():
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'trained_models')
 
-def _clear_old_datasets(directory):
-    for f in glob.glob(os.path.join(directory, '*.csv')) + glob.glob(os.path.join(directory, '*.xlsx')):
-        try:
-            os.remove(f)
-        except OSError:
-            pass
+def _clear_upload_dataset(directory):
+    for ext in ['.csv', '.xlsx']:
+        path = os.path.join(directory, f'latest_upload_dataset{ext}')
+        _safe_remove(path)
+
+def _clear_db_dataset(directory):
+    for ext in ['.csv', '.xlsx']:
+        path = os.path.join(directory, f'latest_db_dataset{ext}')
+        _safe_remove(path)
+
 
 def _build_result_message(accuracy_results: dict) -> str:
     lines = ["Huấn luyện AI thành công! Độ chính xác trên tập kiểm thử:"]
@@ -330,13 +412,12 @@ def handle_train_model():
     is_xlsx = file.filename.endswith('.xlsx')
     if not (is_csv or is_xlsx):
         return jsonify({"error": "Chỉ hỗ trợ định dạng .csv hoặc .xlsx"}), 400
-
     models_dir = _models_dir()
     os.makedirs(models_dir, exist_ok=True)
-    _clear_old_datasets(models_dir)
+    _clear_upload_dataset(models_dir)
 
     ext       = '.csv' if is_csv else '.xlsx'
-    file_path = os.path.join(models_dir, f'latest_dataset{ext}')
+    file_path = os.path.join(models_dir, f'latest_upload_dataset{ext}')
     file.save(file_path)
 
     try:
@@ -437,9 +518,9 @@ def train_from_db():
         # Xuất ra file Excel
         models_dir = _models_dir()
         os.makedirs(models_dir, exist_ok=True)
-        _clear_old_datasets(models_dir)
+        _clear_db_dataset(models_dir)
 
-        file_path = os.path.join(models_dir, 'latest_dataset.xlsx')
+        file_path = os.path.join(models_dir, 'latest_db_dataset.xlsx')
         df_merged.to_excel(file_path, sheet_name="Dữ liệu chuẩn hóa", index=False)
 
         from services.ai import train_and_save_model

@@ -388,7 +388,7 @@ def train_and_save_model(dataset_path):
             max_depth=12,
             class_weight='balanced',
             random_state=42,
-            n_jobs=-1
+            n_jobs=1
         )
         rf_model.fit(X_tr, y_tr)
         models[t] = rf_model
