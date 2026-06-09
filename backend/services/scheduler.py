@@ -12,9 +12,11 @@ def check_schedules():
     today    = day_map[now.weekday()]
 
     schedules = Schedule.query.filter_by(is_active=True).all()
+    print(f"[SCHEDULER DEBUG] Wake up at {now.strftime('%H:%M:%S')}. Active schedules: {len(schedules)}. Today: {today}")
     executed = False
 
     for s in schedules:
+        print(f"[SCHEDULER DEBUG] Checking ID={s.id} Time={s.hour:02d}:{s.minute:02d} Days=[{s.days}]")
         # Kiểm tra đúng giờ và đúng ngày
         if s.hour != now.hour or s.minute != now.minute:
             continue

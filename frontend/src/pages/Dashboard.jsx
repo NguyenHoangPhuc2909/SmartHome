@@ -52,7 +52,7 @@ const TRAIN_STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success", ERR
 
 function Dashboard() {
   const theme = useTheme();
-  const { devices, sensors, aiMode, accessLogs, sensorHistory, fetchDevices, fetchAccessLogs, fetchSensorHistory, toggleDevice } = useStore();
+  const { devices, sensors, aiMode, accessLogs, sensorHistory, fetchDevices, fetchAccessLogs, fetchSensorHistory, toggleDevice, fetchNotifications } = useStore();
   const [chartData, setChartData] = useState([]);
 
   // Modal train AI
@@ -167,6 +167,7 @@ function Dashboard() {
         
         alert(alertMsg);
         fetchDevices();
+        fetchNotifications();
       }
     } catch (error) {
       console.error("Auto control failed:", error);
@@ -188,6 +189,7 @@ function Dashboard() {
       if (response.data.status === "ok") {
         setSimResults(response.data.actions || []);
         fetchDevices();
+        fetchNotifications();
       } else {
         setSimError(response.data.message || "Lỗi chạy giả lập");
       }

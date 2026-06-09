@@ -173,22 +173,26 @@ def auto_control_devices():
         }
 
         actions = []
+        state_changed = False
         for key, dev in devices_map.items():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
-                # Publish MQTT command cho AI
-                topic = get_mqtt_topic(dev)
-                if topic:
-                    publish_command(topic, pred_status)
-                
-                # Ghi log trạng thái AI cho thiết bị
-                db.session.add(ActuatorLog(
-                    device_id=dev.id,
-                    status=pred_status,
-                    mode="AI",
-                    timestamp=now
-                ))
+                # Chỉ ghi log và Publish MQTT nếu trạng thái thay đổi
+                last_log = ActuatorLog.query.filter_by(device_id=dev.id).order_by(ActuatorLog.timestamp.desc()).first()
+                if not last_log or last_log.status != pred_status:
+                    # Publish MQTT command cho AI
+                    topic = get_mqtt_topic(dev)
+                    if topic:
+                        publish_command(topic, pred_status)
+                    
+                    db.session.add(ActuatorLog(
+                        device_id=dev.id,
+                        status=pred_status,
+                        mode="AI",
+                        timestamp=now
+                    ))
+                    state_changed = True
                 
                 actions.append({
                     "id": dev.id,
@@ -199,7 +203,10 @@ def auto_control_devices():
                 })
 
         db.session.commit()
-        return jsonify({"status": "ok", "actions": actions})
+        if state_changed:
+            socketio.emit("refresh_devices", namespace="/")
+            
+        return jsonify({"status": "ok", "actions": actions, "state_changed": state_changed})
 
     except Exception as e:
         traceback.print_exc()
@@ -255,17 +262,21 @@ def simulate_devices():
         }
 
         actions = []
+        state_changed = False
         for key, dev in devices_map.items():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
-                # Ghi log trạng thái AI cho thiết bị vào ActuatorLog
-                db.session.add(ActuatorLog(
-                    device_id=dev.id,
-                    status=pred_status,
-                    mode="AI",
-                    timestamp=dt
-                ))
+                # Chỉ ghi log trạng thái AI cho thiết bị vào ActuatorLog nếu trạng thái đổi
+                last_log = ActuatorLog.query.filter_by(device_id=dev.id).order_by(ActuatorLog.timestamp.desc()).first()
+                if not last_log or last_log.status != pred_status:
+                    db.session.add(ActuatorLog(
+                        device_id=dev.id,
+                        status=pred_status,
+                        mode="AI",
+                        timestamp=dt
+                    ))
+                    state_changed = True
                 
                 actions.append({
                     "id": dev.id,
@@ -276,8 +287,9 @@ def simulate_devices():
                 })
 
         db.session.commit()
-        socketio.emit("refresh_devices", namespace="/")
-        return jsonify({"status": "ok", "actions": actions})
+        if state_changed:
+            socketio.emit("refresh_devices", namespace="/")
+        return jsonify({"status": "ok", "actions": actions, "state_changed": state_changed})
 
     except Exception as e:
         traceback.print_exc()
@@ -566,3 +578,13 @@ def train_from_db():
         if 'file_path' in locals():
             _safe_remove(file_path)
         return jsonify({"error": f"Lỗi train từ DB: {str(e)}"}), 500
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# POST /trigger_refresh  — Endpoint nội bộ: Scheduler gọi để emit WebSocket
+# ══════════════════════════════════════════════════════════════════════════════
+@device_bp.route("/trigger_refresh", methods=["POST"])
+def trigger_refresh():
+    """Background scheduler gọi endpoint này để emit refresh_devices từ request context chuẩn"""
+    socketio.emit("refresh_devices", namespace="/")
+    return jsonify({"status": "ok"})
