@@ -16,6 +16,10 @@ db.init_app(app)
 # ── Socket.IO ──────────────────────────────────────────────────────────────
 socketio.init_app(app)
 
+# ── MQTT ───────────────────────────────────────────────────────────────────
+from services.mqtt_service import start_mqtt
+start_mqtt(app)
+
 # ── IP Guard Middleware ────────────────────────────────────────────────────
 @app.before_request
 def limit_remote_addr():

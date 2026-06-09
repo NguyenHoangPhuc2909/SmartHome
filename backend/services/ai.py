@@ -144,19 +144,24 @@ MODEL_PATH     = os.path.join(MODEL_DIR, 'random_forest_models.pkl')
 # ══════════════════════════════════════════════════════════════════════════════
 def ensure_devices_exist():
     """
-    Đảm bảo 4 thiết bị AI (đèn pk, đèn pn, quạt pk, quạt pn) tồn tại trong database.
+    Đảm bảo TẤT CẢ thiết bị phần cứng tồn tại trong database.
     """
-    targets_info = {
-        'PK_den': {'name': 'Đèn phòng khách', 'type': 'light', 'room': 'living_room'},
-        'PK_quat': {'name': 'Quạt phòng khách', 'type': 'fan', 'room': 'living_room'},
-        'PN_den': {'name': 'Đèn phòng ngủ', 'type': 'light', 'room': 'bedroom'},
-        'PN_quat': {'name': 'Quạt phòng ngủ', 'type': 'fan', 'room': 'bedroom'},
-    }
-    for key, info in targets_info.items():
+    all_devices = [
+        {'name': 'Đèn phòng khách',  'type': 'light', 'room': 'living_room'},
+        {'name': 'Quạt phòng khách', 'type': 'fan',   'room': 'living_room'},
+        {'name': 'Đèn phòng ngủ',    'type': 'light', 'room': 'bedroom'},
+        {'name': 'Quạt phòng ngủ',   'type': 'fan',   'room': 'bedroom'},
+        {'name': 'Đèn phòng bếp',    'type': 'light', 'room': 'kitchen'},
+        {'name': 'Đèn cổng',         'type': 'light', 'room': 'gate'},
+        {'name': 'Đèn nhà vệ sinh',  'type': 'light', 'room': 'bathroom'},
+        {'name': 'Còi báo động',     'type': 'alarm', 'room': 'kitchen'},
+    ]
+    for info in all_devices:
         dev = Device.query.filter_by(type=info['type'], room=info['room']).first()
         if not dev:
             dev = Device(name=info['name'], type=info['type'], room=info['room'])
             db.session.add(dev)
+            print(f"[DB] Created device: {info['name']} ({info['type']}/{info['room']})")
     db.session.commit()
 
 # ══════════════════════════════════════════════════════════════════════════════

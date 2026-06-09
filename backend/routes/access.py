@@ -9,6 +9,7 @@ import cv2
 
 # Import class EmbeddingModel
 from services.embedding_helper import EmbeddingModel
+from services.mqtt_service import publish_command
 
 # Lấy instance của model
 face_model = EmbeddingModel.get_instance()
@@ -70,14 +71,18 @@ def get_log_image(log_id):
 # ── Webhook từ ESP32-CAM ─────────────────────────────────────────────
 @access_bp.route("/recognize", methods=["POST"])
 def recognize():
-    if "image" not in request.files:
-        return jsonify({"error": "Thiếu ảnh"}), 400
-
-    image_file = request.files["image"]
     filename   = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
     image_path = os.path.join(Config.RECOG_IMAGES_DIR, filename)
     os.makedirs(Config.RECOG_IMAGES_DIR, exist_ok=True)
-    image_file.save(image_path)
+
+    if "image" in request.files:
+        image_file = request.files["image"]
+        image_file.save(image_path)
+    elif request.get_data():
+        with open(image_path, "wb") as f:
+            f.write(request.get_data())
+    else:
+        return jsonify({"error": "Thiếu ảnh"}), 400
 
     # Nhận diện khuôn mặt
     from services.face_recognition import recognize_face
@@ -114,6 +119,7 @@ def recognize():
 
     # Nếu GRANTED → ghi log mở cửa
     if result == "GRANTED":
+        publish_command("myiot/home/commands/servo", "1")
         device_log = ActuatorLog(
             device_id = door_device.id,
             status    = 1,
@@ -121,8 +127,9 @@ def recognize():
         )
         db.session.add(device_log)
 
-    # Nếu DENIED → ghi log hú còi
+    # Nếu DENIED → ghi log hú còi (chỉ gửi lệnh cảnh báo, còi hú hay không do ESP32 quyết định dựa vào tính năng bật/tắt còi)
     if is_alert:
+        publish_command("myiot/home/commands/alert", "1")
         alarm_device = Device.query.filter_by(type="alarm").first()
         if not alarm_device:
             alarm_device = Device(type="alarm", room="Phòng Khách", name="Còi báo động")
