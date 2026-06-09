@@ -31,7 +31,7 @@ const useStore = create((set, get) => ({
   devices: [],
   fetchDevices: async () => {
     try {
-      const res = await api.get("/api/devices/status");
+      const res = await api.get(`/api/devices/status?t=${Date.now()}`);
       set({ devices: res.data });
 
       // Lấy các chỉ số cảm biến mới nhất từ tất cả device (kể cả light/fan khi Postman/ESP32 gửi)
@@ -92,14 +92,36 @@ const useStore = create((set, get) => ({
   sensors: { temp: "--", humi: "--", light: "--", gas: "--" },
   setSensors: (data) => set({ sensors: data }),
 
+  // ── Sensor History (dữ liệu cho mini-chart) ──────────────────────────────
+  sensorHistory: [],
+  fetchSensorHistory: async () => {
+    try {
+      const res = await api.get(`/api/devices/sensor-history?t=${Date.now()}`);
+      set({ sensorHistory: res.data });
+    } catch (err) {
+      console.error("fetchSensorHistory:", err);
+    }
+  },
+
   // ── Access Logs ───────────────────────────────────────────────────────────
   accessLogs: [],
   fetchAccessLogs: async () => {
     try {
-      const res = await api.get("/api/access/logs?limit=20");
+      const res = await api.get(`/api/access/logs?limit=20&t=${Date.now()}`);
       set({ accessLogs: res.data });
     } catch (err) {
       console.error("fetchAccessLogs:", err);
+    }
+  },
+
+  // ── Notifications ─────────────────────────────────────────────────────────
+  notifications: [],
+  fetchNotifications: async () => {
+    try {
+      const res = await api.get(`/api/notifications/?limit=20&t=${Date.now()}`);
+      set({ notifications: res.data });
+    } catch (err) {
+      console.error("fetchNotifications:", err);
     }
   },
 
@@ -107,7 +129,7 @@ const useStore = create((set, get) => ({
   schedules: [],
   fetchSchedules: async () => {
     try {
-      const res = await api.get("/api/schedules/");
+      const res = await api.get(`/api/schedules/?t=${Date.now()}`);
       set({ schedules: res.data });
     } catch (err) {
       console.error("fetchSchedules:", err);

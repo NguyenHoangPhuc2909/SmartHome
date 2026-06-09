@@ -17,7 +17,8 @@ import {
   Card,
   LinearProgress,
   useTheme,
-  Alert
+  Alert,
+  TextField
 } from "@mui/material";
 import {
   Settings as SettingsIcon,
@@ -39,12 +40,19 @@ const roomLabel = {
   entrance: "Cửa chính",
 };
 
+// Helper để lấy chuỗi datetime-local ở múi giờ địa phương
+const getLocalDateTimeString = () => {
+  const now = new Date();
+  const tzOffset = now.getTimezoneOffset() * 60000;
+  return new Date(now - tzOffset).toISOString().slice(0, 16);
+};
+
 // ── Trạng thái của modal train ────────────────────────────────────────────────
 const TRAIN_STATUS = { IDLE: "idle", LOADING: "loading", SUCCESS: "success", ERROR: "error" };
 
 function Dashboard() {
   const theme = useTheme();
-  const { devices, sensors, aiMode, accessLogs, fetchDevices, fetchAccessLogs, toggleDevice, setAiMode } = useStore();
+  const { devices, sensors, aiMode, accessLogs, sensorHistory, fetchDevices, fetchAccessLogs, fetchSensorHistory, toggleDevice, fetchNotifications } = useStore();
   const [chartData, setChartData] = useState([]);
 
   // Modal train AI
@@ -54,15 +62,21 @@ function Dashboard() {
   const [trainError, setTrainError] = useState("");
   const fileInputRef = useRef(null);
 
-  // ── Poll mỗi 5 giây ─────────────────────────────────────────────────────────
+  // Modal giả lập AI
+  const [showSimulateModal, setShowSimulateModal] = useState(false);
+  const [simTemp, setSimTemp] = useState(25.0);
+  const [simHumi, setSimHumi] = useState(60.0);
+  const [simLight, setSimLight] = useState(150.0);
+  const [simTime, setSimTime] = useState("");
+  const [simLoading, setSimLoading] = useState(false);
+  const [simResults, setSimResults] = useState(null);
+  const [simError, setSimError] = useState("");
+
+  // ── Fetch dữ liệu ban đầu ──────────────────────────────────────────────────
   useEffect(() => {
     fetchDevices();
     fetchAccessLogs();
-    const interval = setInterval(() => {
-      fetchDevices();
-      fetchAccessLogs();
-    }, 5000);
-    return () => clearInterval(interval);
+    fetchSensorHistory();
   }, []);
 
   // ── Cập nhật chart khi sensors thay đổi ──────────────────────────────────────
@@ -131,6 +145,63 @@ function Dashboard() {
     }
   };
 
+  const handleAutoControl = async () => {
+    try {
+      const sensorData = {
+        temp: sensors.temp !== "--" ? parseFloat(sensors.temp) : 25.0,
+        humi: sensors.humi !== "--" ? parseFloat(sensors.humi) : 60.0,
+        light: sensors.light !== "--" ? parseFloat(sensors.light) : 150.0,
+        gas: sensors.gas !== "--" ? parseFloat(sensors.gas) : 0.0,
+      };
+      
+      const response = await axios.post("/api/devices/auto-control", sensorData);
+      
+      if (response.data.status === "ok") {
+        const actions = response.data.actions || [];
+        const onDevices = actions.filter(a => a.status === 1).map(a => `${a.name} (${roomLabel[a.room] || a.room})`);
+        const offDevices = actions.filter(a => a.status === 0).map(a => `${a.name} (${roomLabel[a.room] || a.room})`);
+        
+        let alertMsg = "🤖 [AI Auto Control] Kết quả xác định trạng thái thiết bị:\n\n";
+        alertMsg += `🟢 Thiết bị BẬT:\n${onDevices.length > 0 ? onDevices.map(d => ` - ${d}`).join("\n") : " - Không có"}\n\n`;
+        alertMsg += `🔴 Thiết bị TẮT:\n${offDevices.length > 0 ? offDevices.map(d => ` - ${d}`).join("\n") : " - Không có"}`;
+        
+        alert(alertMsg);
+        fetchDevices();
+        fetchNotifications();
+      }
+    } catch (error) {
+      console.error("Auto control failed:", error);
+      alert("❌ Lỗi khi tự động kích hoạt thiết bị!");
+    }
+  };
+
+  const handleRunSimulation = async () => {
+    setSimLoading(true);
+    setSimError("");
+    setSimResults(null);
+    try {
+      const response = await axios.post("/api/devices/simulate", {
+        temp: parseFloat(simTemp),
+        humi: parseFloat(simHumi),
+        light: parseFloat(simLight),
+        time: simTime,
+      });
+      if (response.data.status === "ok") {
+        setSimResults(response.data.actions || []);
+        fetchDevices();
+        fetchNotifications();
+      } else {
+        setSimError(response.data.message || "Lỗi chạy giả lập");
+      }
+    } catch (error) {
+      console.error("Simulation failed:", error);
+      const msg = error.response?.data?.message || error.response?.data?.error || error.message || "Lỗi không xác định";
+      setSimError(msg);
+    } finally {
+      setSimLoading(false);
+    }
+  };
+
   const activeAlerts = accessLogs.filter((l) => l.is_alert);
   const devicesByRoom = devices.reduce((acc, d) => {
     if (d.type === "sensor") return acc;
@@ -152,7 +223,32 @@ function Dashboard() {
           </Typography>
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button
+            variant="contained"
+            color="primary"
+            onClick={handleAutoControl}
+            sx={{ fontWeight: 'bold' }}
+          >
+            Tự động kích hoạt (AI)
+          </Button>
+
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setSimTemp(sensors.temp !== "--" ? sensors.temp : 25.0);
+              setSimHumi(sensors.humi !== "--" ? sensors.humi : 60.0);
+              setSimLight(sensors.light !== "--" ? sensors.light : 150.0);
+              setSimTime(getLocalDateTimeString());
+              setSimResults(null);
+              setSimError("");
+              setShowSimulateModal(true);
+            }}
+            sx={{ fontWeight: 'bold' }}
+          >
+            Giả lập AI
+          </Button>
+
           <Button
             variant="outlined"
             startIcon={<SettingsIcon />}
@@ -162,33 +258,6 @@ function Dashboard() {
             Huấn luyện AI
           </Button>
 
-          <Box sx={{ width: '1px', height: 24, bgcolor: 'divider' }} />
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={aiMode}
-                onChange={async () => {
-                  const newMode = !aiMode;
-                  setAiMode(newMode);
-                  if (newMode) {
-                    try {
-                      await axios.post("/api/devices/reset-to-ai");
-                      fetchDevices();
-                    } catch (err) {
-                      console.error("Không thể reset về AI mode:", err);
-                    }
-                  }
-                }}
-                color="primary"
-              />
-            }
-            label={
-              <Typography variant="body2" fontWeight="bold" color={aiMode ? 'primary' : 'textSecondary'}>
-                Chế độ AI: {aiMode ? 'BẬT' : 'TẮT'}
-              </Typography>
-            }
-          />
         </Box>
       </Box>
 
@@ -199,16 +268,16 @@ function Dashboard() {
         </Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 2 }}>
           <Box>
-            <SensorCard type="temp" value={sensors.temp} room="Phòng khách" />
+            <SensorCard type="temp" value={sensors.temp} room="Phòng khách" history={sensorHistory} />
           </Box>
           <Box>
-            <SensorCard type="humi" value={sensors.humi} room="Phòng khách" />
+            <SensorCard type="humi" value={sensors.humi} room="Phòng khách" history={sensorHistory} />
           </Box>
           <Box>
-            <SensorCard type="light" value={sensors.light} room="Phòng khách" />
+            <SensorCard type="light" value={sensors.light} room="Phòng khách" history={sensorHistory} />
           </Box>
           <Box>
-            <SensorCard type="gas" value={sensors.gas} room="Phòng bếp" />
+            <SensorCard type="gas" value={sensors.gas} room="Phòng bếp" history={sensorHistory} />
           </Box>
         </Box>
       </Box>
@@ -288,7 +357,7 @@ function Dashboard() {
         onClose={(e, reason) => { if (reason !== 'backdropClick') closeModal(); }}
         maxWidth="sm"
         fullWidth
-        PaperProps={{ sx: {  } }}
+        slotProps={{ paper: {  sx: {  }  } }}
       >
         <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Typography variant="h6" fontWeight="bold" color="primary">
@@ -429,6 +498,147 @@ function Dashboard() {
           ) : trainStatus === TRAIN_STATUS.IDLE ? (
             <Button onClick={closeModal} color="inherit">Hủy bỏ</Button>
           ) : null}
+        </DialogActions>
+      </Dialog>
+
+      {/* ══════════════════════════════════════════════════════════════════════
+          MODAL GIẢ LẬP AI
+      ══════════════════════════════════════════════════════════════════════ */}
+      <Dialog
+        open={showSimulateModal}
+        onClose={() => setShowSimulateModal(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" fontWeight="bold" color="secondary">
+            Giả lập AI (Random Forest)
+          </Typography>
+          <IconButton onClick={() => setShowSimulateModal(false)} size="small">
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="body2" color="textSecondary" sx={{ mb: 3 }}>
+            Nhập điều kiện môi trường và mốc thời gian giả lập để chạy model Random Forest tự động bật/tắt thiết bị.
+          </Typography>
+
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+            <TextField
+              label="Nhiệt độ (°C)"
+              type="number"
+              fullWidth
+              size="small"
+              value={simTemp}
+              onChange={(e) => setSimTemp(e.target.value)}
+              inputProps={{ step: "0.1" }}
+            />
+            <TextField
+              label="Độ ẩm (%)"
+              type="number"
+              fullWidth
+              size="small"
+              value={simHumi}
+              onChange={(e) => setSimHumi(e.target.value)}
+              inputProps={{ step: "1" }}
+            />
+            <TextField
+              label="Ánh sáng (lux)"
+              type="number"
+              fullWidth
+              size="small"
+              value={simLight}
+              onChange={(e) => setSimLight(e.target.value)}
+              inputProps={{ step: "1" }}
+            />
+            <TextField
+              label="Thời gian giả lập"
+              type="datetime-local"
+              fullWidth
+              size="small"
+              value={simTime}
+              onChange={(e) => setSimTime(e.target.value)}
+              InputLabelProps={{ shrink: true }}
+            />
+          </Box>
+
+          {simError && (
+            <Alert severity="error" sx={{ mt: 3 }}>
+              {simError}
+            </Alert>
+          )}
+
+          {simLoading && (
+            <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4, gap: 2 }}>
+              <CircularProgress size={30} color="secondary" />
+              <Typography variant="body2" color="textSecondary">
+                Đang chạy dự đoán RF...
+              </Typography>
+            </Box>
+          )}
+
+          {simResults && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="subtitle2" fontWeight="bold" sx={{ mb: 1.5, color: 'text.primary' }}>
+                Kết quả dự đoán & kích hoạt:
+              </Typography>
+              <Paper variant="outlined" sx={{ overflow: 'hidden' }}>
+                {simResults.map((action, idx) => {
+                  const isOn = action.status === 1;
+                  return (
+                    <Box
+                      key={action.id}
+                      sx={{
+                        px: 2,
+                        py: 1.5,
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        bgcolor: idx % 2 === 0 ? 'background.default' : 'background.paper',
+                        borderBottom: idx < simResults.length - 1 ? `1px solid ${theme.palette.divider}` : 'none',
+                      }}
+                    >
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {action.name}
+                        </Typography>
+                        <Typography variant="caption" color="textSecondary">
+                          {roomLabel[action.room] || action.room}
+                        </Typography>
+                      </Box>
+                      <Typography
+                        variant="caption"
+                        fontWeight="bold"
+                        sx={{
+                          bgcolor: isOn ? 'success.light' : 'error.light',
+                          color: isOn ? 'success.main' : 'error.main',
+                          px: 1.5,
+                          py: 0.5,
+                          borderRadius: 1,
+                        }}
+                      >
+                        {action.status_text}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Paper>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setShowSimulateModal(false)} color="inherit">
+            Đóng
+          </Button>
+          <Button
+            onClick={handleRunSimulation}
+            variant="contained"
+            color="secondary"
+            disabled={simLoading}
+            sx={{ fontWeight: 'bold' }}
+          >
+            Chạy giả lập
+          </Button>
         </DialogActions>
       </Dialog>
     </Box>

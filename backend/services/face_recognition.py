@@ -11,6 +11,7 @@ face_model = EmbeddingModel.get_instance()
 
 def get_face_crop(img):
     """Hàm phụ trợ: Tìm và cắt khuôn mặt sử dụng YuNet (đồng bộ với camera.py)"""
+    img_to_crop = img
     try:
         detector = cv2.FaceDetectorYN.create(
             model="trained_models/face_detection_yunet.onnx",
@@ -25,6 +26,20 @@ def get_face_crop(img):
             # Chọn khuôn mặt có điểm tự tin cao nhất
             best_face = max(faces, key=lambda f: f[-1])
             x, y, w, h = best_face[:4].astype(int)
+            
+            if len(best_face) >= 14:
+                re_x, re_y = best_face[4], best_face[5]
+                le_x, le_y = best_face[6], best_face[7]
+                if re_x > le_x:
+                    re_x, re_y, le_x, le_y = le_x, le_y, re_x, re_y
+                dx = le_x - re_x
+                dy = le_y - re_y
+                if dx > 0:
+                    angle = np.degrees(np.arctan2(dy, dx))
+                    if abs(angle) < 45:
+                        cx, cy = x + w // 2, y + h // 2
+                        M = cv2.getRotationMatrix2D((float(cx), float(cy)), angle, 1.0)
+                        img_to_crop = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), flags=cv2.INTER_CUBIC)
         else:
             return None
     except Exception as e:
@@ -38,7 +53,7 @@ def get_face_crop(img):
         x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
 
     # Ép khung cắt thành hình vuông bằng cách lấy cạnh lớn hơn
-    size = max(w, h)
+    size = int(max(w, h) * 1.1) # Padding 10%
     
     # Tính toán lại x, y để giữ tâm khuôn mặt ở giữa
     center_x = x + w // 2
@@ -48,11 +63,11 @@ def get_face_crop(img):
     new_y = max(0, center_y - size // 2)
     
     # Đảm bảo không bị tràn viền ảnh gốc
-    new_x_end = min(img.shape[1], new_x + size)
-    new_y_end = min(img.shape[0], new_y + size)
+    new_x_end = min(img_to_crop.shape[1], new_x + size)
+    new_y_end = min(img_to_crop.shape[0], new_y + size)
     
     # Cắt ảnh vuông
-    face_crop = img[new_y:new_y_end, new_x:new_x_end]
+    face_crop = img_to_crop[new_y:new_y_end, new_x:new_x_end]
     return face_crop
 
 

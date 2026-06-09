@@ -12,7 +12,7 @@ class User(db.Model):
     username      = db.Column(db.String(64), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     name          = db.Column(db.String(128))
-    created_at    = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at    = db.Column(db.DateTime, default=datetime.now)
 
     datasets = db.relationship("FaceDataset", backref="owner", lazy=True, cascade="all, delete")
 
@@ -35,7 +35,7 @@ class FaceDataset(db.Model):
     name       = db.Column(db.String(128), nullable=False)
     # Thêm cột embedding kiểu Text để lưu chuỗi JSON của mảng vector đặc trưng
     embedding  = db.Column(db.Text, nullable=True) 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.now)
 
     access_logs = db.relationship("AccessLog", backref="matched_dataset", lazy=True,
                                   foreign_keys="AccessLog.matched_dataset_id")
@@ -62,7 +62,8 @@ class Device(db.Model):
     room        = db.Column(db.String(64),  nullable=False)     # living_room | bedroom | kitchen | bathroom | entrance
     sensor_type = db.Column(db.String(32),  nullable=True)      # temp | humi | light | gas | NULL
 
-    logs        = db.relationship("DeviceLog",  backref="device", lazy=True)
+    actuator_logs = db.relationship("ActuatorLog", backref="device", lazy=True)
+    sensor_logs   = db.relationship("SensorLog",   backref="device", lazy=True)
     schedules   = db.relationship("Schedule",   backref="device", lazy=True)
     access_logs = db.relationship("AccessLog",  backref="device", lazy=True)
 
@@ -70,22 +71,42 @@ class Device(db.Model):
         return f"<Device {self.name} ({self.type}) - {self.room}>"
 
 
-# ── Device Logs ────────────────────────────────────────────────────────────
-class DeviceLog(db.Model):
-    __tablename__ = "device_logs"
+# ── Actuator Logs (Thiết bị) ────────────────────────────────────────────────
+class ActuatorLog(db.Model):
+    __tablename__ = "actuator_logs"
 
     id        = db.Column(db.Integer, primary_key=True)
     device_id = db.Column(db.Integer, db.ForeignKey("devices.id"), nullable=False)
     status    = db.Column(db.Integer, nullable=False)           # 0 = OFF | 1 = ON
     mode      = db.Column(db.String(16), nullable=False)        # Manual | AI | Schedule | Alert
-    temp      = db.Column(db.Float,   nullable=True)            # nhiệt độ lúc ghi log
-    humi      = db.Column(db.Float,   nullable=True)            # độ ẩm lúc ghi log
-    light     = db.Column(db.Float,   nullable=True)            # ánh sáng lúc ghi log
-    gas       = db.Column(db.Float,   nullable=True)            # khí gas lúc ghi log
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+    __table_args__ = (
+        db.Index('idx_actuator_device_time', 'device_id', 'timestamp'),
+    )
 
     def __repr__(self):
-        return f"<DeviceLog device={self.device_id} status={self.status} mode={self.mode}>"
+        return f"<ActuatorLog device={self.device_id} status={self.status} mode={self.mode}>"
+
+
+# ── Sensor Logs (Môi trường) ────────────────────────────────────────────────
+class SensorLog(db.Model):
+    __tablename__ = "sensor_logs"
+
+    id        = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Integer, db.ForeignKey("devices.id"), nullable=False)
+    temp      = db.Column(db.Float, nullable=True)
+    humi      = db.Column(db.Float, nullable=True)
+    light     = db.Column(db.Float, nullable=True)
+    gas       = db.Column(db.Float, nullable=True)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+    __table_args__ = (
+        db.Index('idx_sensor_device_time', 'device_id', 'timestamp'),
+    )
+
+    def __repr__(self):
+        return f"<SensorLog device={self.device_id} temp={self.temp} humi={self.humi}>"
 
 
 # ── Schedules ──────────────────────────────────────────────────────────────
@@ -115,7 +136,7 @@ class AccessLog(db.Model):
     confidence         = db.Column(db.Float)
     result             = db.Column(db.String(16), nullable=False)               # GRANTED | DENIED
     is_alert           = db.Column(db.Boolean, default=False)                   # true nếu trigger còi
-    timestamp          = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp          = db.Column(db.DateTime, default=datetime.now)
 
     def __repr__(self):
         return f"<AccessLog device={self.device_id} result={self.result} alert={self.is_alert}>"

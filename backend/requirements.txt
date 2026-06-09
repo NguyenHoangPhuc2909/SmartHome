@@ -10,3 +10,5 @@ pandas
 openpyxl
 scikit-learn
 onnxruntime
+Flask-SocketIO
+simple-websocket
