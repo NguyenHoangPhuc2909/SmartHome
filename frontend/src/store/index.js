@@ -114,6 +114,17 @@ const useStore = create((set, get) => ({
     }
   },
 
+  // ── Notifications ─────────────────────────────────────────────────────────
+  notifications: [],
+  fetchNotifications: async () => {
+    try {
+      const res = await api.get(`/api/notifications/?limit=20&t=${Date.now()}`);
+      set({ notifications: res.data });
+    } catch (err) {
+      console.error("fetchNotifications:", err);
+    }
+  },
+
   // ── Schedules ─────────────────────────────────────────────────────────────
   schedules: [],
   fetchSchedules: async () => {

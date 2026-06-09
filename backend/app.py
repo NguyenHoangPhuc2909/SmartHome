@@ -39,12 +39,14 @@ from routes.device   import device_bp
 from routes.dataset  import dataset_bp
 from routes.schedule import schedule_bp
 from routes.access   import access_bp
+from routes.notifications import notifications_bp
 
 app.register_blueprint(auth_bp)
 app.register_blueprint(device_bp,   url_prefix="/api/devices")
 app.register_blueprint(dataset_bp,  url_prefix="/api/datasets")
 app.register_blueprint(schedule_bp, url_prefix="/api/schedules")
 app.register_blueprint(access_bp,   url_prefix="/api/access")
+app.register_blueprint(notifications_bp, url_prefix="/api/notifications")
 
 # ── Scheduler (chạy schedules) ─────────────────────────────────────────────
 def run_schedules_loop():

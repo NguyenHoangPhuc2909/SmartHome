@@ -21,9 +21,11 @@ export default function App() {
   const fetchUser = useStore((s) => s.fetchUser);
   const fetchDevices = useStore((s) => s.fetchDevices);
   const fetchAccessLogs = useStore((s) => s.fetchAccessLogs);
+  const fetchNotifications = useStore((s) => s.fetchNotifications);
 
   useEffect(() => {
     fetchUser();
+    fetchNotifications();
 
     // WebSocket connection directly to backend
     const socket = io("http://localhost:5000");
@@ -35,10 +37,12 @@ export default function App() {
     socket.on("refresh_devices", () => {
       console.log("Socket.IO Received: refresh_devices => Fetching new data...");
       fetchDevices();
+      fetchNotifications();
     });
 
     socket.on("refresh_access_logs", () => {
       fetchAccessLogs();
+      fetchNotifications();
     });
 
     return () => {

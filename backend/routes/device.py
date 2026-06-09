@@ -172,17 +172,21 @@ def auto_control_devices():
         }
 
         actions = []
+        state_changed = False
         for key, dev in devices_map.items():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
-                # Ghi log trạng thái AI cho thiết bị
-                db.session.add(ActuatorLog(
-                    device_id=dev.id,
-                    status=pred_status,
-                    mode="AI",
-                    timestamp=now
-                ))
+                # Chỉ ghi log nếu trạng thái thay đổi
+                last_log = ActuatorLog.query.filter_by(device_id=dev.id).order_by(ActuatorLog.timestamp.desc()).first()
+                if not last_log or last_log.status != pred_status:
+                    db.session.add(ActuatorLog(
+                        device_id=dev.id,
+                        status=pred_status,
+                        mode="AI",
+                        timestamp=now
+                    ))
+                    state_changed = True
                 
                 actions.append({
                     "id": dev.id,
@@ -193,7 +197,10 @@ def auto_control_devices():
                 })
 
         db.session.commit()
-        return jsonify({"status": "ok", "actions": actions})
+        if state_changed:
+            socketio.emit("refresh_devices", namespace="/")
+            
+        return jsonify({"status": "ok", "actions": actions, "state_changed": state_changed})
 
     except Exception as e:
         traceback.print_exc()
@@ -249,17 +256,21 @@ def simulate_devices():
         }
 
         actions = []
+        state_changed = False
         for key, dev in devices_map.items():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
-                # Ghi log trạng thái AI cho thiết bị vào ActuatorLog
-                db.session.add(ActuatorLog(
-                    device_id=dev.id,
-                    status=pred_status,
-                    mode="AI",
-                    timestamp=dt
-                ))
+                # Chỉ ghi log trạng thái AI cho thiết bị vào ActuatorLog nếu trạng thái đổi
+                last_log = ActuatorLog.query.filter_by(device_id=dev.id).order_by(ActuatorLog.timestamp.desc()).first()
+                if not last_log or last_log.status != pred_status:
+                    db.session.add(ActuatorLog(
+                        device_id=dev.id,
+                        status=pred_status,
+                        mode="AI",
+                        timestamp=dt
+                    ))
+                    state_changed = True
                 
                 actions.append({
                     "id": dev.id,
@@ -270,8 +281,9 @@ def simulate_devices():
                 })
 
         db.session.commit()
-        socketio.emit("refresh_devices", namespace="/")
-        return jsonify({"status": "ok", "actions": actions})
+        if state_changed:
+            socketio.emit("refresh_devices", namespace="/")
+        return jsonify({"status": "ok", "actions": actions, "state_changed": state_changed})
 
     except Exception as e:
         traceback.print_exc()

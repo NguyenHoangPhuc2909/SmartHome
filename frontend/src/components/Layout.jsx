@@ -56,8 +56,8 @@ function Layout() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [notiAnchorEl, setNotiAnchorEl] = useState(null);
   const [lastReadId, setLastReadId] = useState(() => {
-    const saved = localStorage.getItem('lastReadAlertId');
-    return saved ? parseInt(saved, 10) : null;
+    const saved = localStorage.getItem('lastReadNotificationId');
+    return saved ? saved : null;
   });
   const [currentTime, setCurrentTime] = useState(new Date());
 
@@ -66,10 +66,8 @@ function Layout() {
     return () => clearInterval(timer);
   }, []);
 
-  const accessLogs = useStore((s) => s.accessLogs || []);
-  const activeAlerts = accessLogs
-    .filter(log => log.is_alert && log.result === "DENIED")
-    .slice(0, 10); // Lấy tối đa 10 cái gần nhất
+  const notifications = useStore((s) => s.notifications || []);
+  const activeAlerts = notifications.slice(0, 10); // Lấy tối đa 15 cái gần nhất
 
   // Tính số lượng thông báo chưa đọc
   let unreadCount = 0;
@@ -104,7 +102,7 @@ function Layout() {
     if (activeAlerts.length > 0) {
       const topId = activeAlerts[0].id;
       setLastReadId(topId);
-      localStorage.setItem('lastReadAlertId', topId);
+      localStorage.setItem('lastReadNotificationId', topId);
     }
   };
 
@@ -364,12 +362,12 @@ function Layout() {
                 activeAlerts.map(log => (
                   <ListItemButton
                     key={log.id}
-                    onClick={() => { handleNotiClose(); handleNavigation('/access'); }}
+                    onClick={() => { handleNotiClose(); if (log.type === 'access') handleNavigation('/access'); else handleNavigation('/dashboard'); }}
                     sx={{ borderBottom: '1px solid #f5f5f5', p: 2, whiteSpace: 'normal' }}
                   >
                     <Box>
-                      <Typography variant="body2" color="error" fontWeight="bold" gutterBottom>
-                        ⚠ Cảnh báo người lạ xâm nhập
+                      <Typography variant="body2" color={log.is_alert ? "error" : "textPrimary"} fontWeight={log.is_alert ? "bold" : "medium"} gutterBottom>
+                        {log.is_alert ? "⚠ " : ""}{log.message}
                       </Typography>
                       <Typography variant="caption" color="textSecondary">
                         Lúc: {new Date(log.timestamp).toLocaleString("vi-VN")}
