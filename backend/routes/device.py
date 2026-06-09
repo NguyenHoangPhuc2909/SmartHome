@@ -7,6 +7,7 @@ import pandas as pd
 from flask import Blueprint, request, jsonify, session
 from models import db, Device, ActuatorLog, SensorLog, User
 from extensions import socketio
+from services.mqtt_service import publish_command
 
 device_bp = Blueprint("device", __name__)
 
@@ -176,6 +177,11 @@ def auto_control_devices():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
+                # Publish MQTT command cho AI
+                topic = get_mqtt_topic(dev)
+                if topic:
+                    publish_command(topic, pred_status)
+                
                 # Ghi log trạng thái AI cho thiết bị
                 db.session.add(ActuatorLog(
                     device_id=dev.id,
@@ -316,6 +322,18 @@ def control_device(device_id):
     if status is None:
         return jsonify({"error": "Thiếu trường 'status'"}), 400
 
+    device = Device.query.get(device_id)
+    if not device:
+        return jsonify({"error": "Không tìm thấy thiết bị"}), 404
+
+    # Publish MQTT command
+    topic = get_mqtt_topic(device)
+    print(f"[DEBUG] Control device {device_id}: name={device.name!r}, type={device.type!r}, room={device.room!r} -> topic={topic!r}")
+    if topic:
+        publish_command(topic, status)
+    else:
+        print(f"[DEBUG] WARNING: No MQTT topic mapped for this device! Check type/room values.")
+
     db.session.add(ActuatorLog(
         device_id=device_id,
         status=int(status),
@@ -368,6 +386,22 @@ def get_logs(device_id):
 # ══════════════════════════════════════════════════════════════════════════════
 # HELPER
 # ══════════════════════════════════════════════════════════════════════════════
+def get_mqtt_topic(device):
+    if device.type == "light":
+        if device.room == "living_room": return "myiot/home/controls/led1"
+        if device.room == "bedroom": return "myiot/home/controls/led2"
+        if device.room == "kitchen": return "myiot/home/controls/led3"
+        if device.room == "gate": return "myiot/home/controls/led4"
+        if device.room == "bathroom": return "myiot/home/controls/led5"
+    elif device.type == "fan":
+        if device.room == "living_room": return "myiot/home/controls/motor1"
+        if device.room == "bedroom": return "myiot/home/controls/motor2"
+    elif device.type == "door":
+        return "myiot/home/commands/servo"
+    elif device.type == "alarm":
+        return "myiot/home/controls/buzzer"
+    return None
+
 def _models_dir():
     return os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'trained_models')
 
