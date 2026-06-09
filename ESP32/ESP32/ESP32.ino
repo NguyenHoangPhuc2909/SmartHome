@@ -45,12 +45,12 @@ DHT dht(DHTPIN, DHTTYPE);
 #define SERVO_PIN 18
 
 // 4 chân điều khiển L298N (2 động cơ)
-// Nếu bạn nối 4 chân: Quạt 1 (IN1, IN2), Quạt 2 (IN3, IN4)
-// Nếu bạn chỉ nối 2 chân: Cắm vào IN1 và IN3, các chân IN2, IN4 bỏ trống hoặc nối GND.
-#define MOTOR1_IN1 27
-#define MOTOR1_IN2 13
-#define MOTOR2_IN3 26
-#define MOTOR2_IN4 14
+// Quạt 1 (Phòng Khách) nối vào OUT3, OUT4 -> điều khiển bởi IN3, IN4
+// Quạt 2 (Phòng Ngủ) nối vào OUT1, OUT2 -> điều khiển bởi IN1, IN2
+#define MOTOR1_IN3 27
+#define MOTOR1_IN4 13
+#define MOTOR2_IN1 26
+#define MOTOR2_IN2 14
 
 // 5. Các LED (5 cái)
 // LED 1: Phòng Khách, 2: Ngủ, 3: Bếp, 4: Cổng, 5: Vệ Sinh
@@ -77,6 +77,9 @@ int lastLdrState = 0;
 unsigned long lastSensorMsg = 0;
 unsigned long lastReconnectAttempt = 0;
 bool isGasAlert = false;
+bool alarmEnabled = true; // Tính năng còi báo động (mặc định bật)
+bool alertActive = false;
+unsigned long alertStartTime = 0;
 
 // Ngắt nút Camera
 volatile bool camTriggered = false;
@@ -108,24 +111,24 @@ void publishStatus(String deviceName, int state) {
   Serial.println("[MQTT TX] Published status: " + topic + " -> " + String(state));
 }
 
-// Điều khiển Động cơ (Hỗ trợ cả đấu 2 chân và 4 chân L298N)
+// Điều khiển Động cơ (Hoán đổi: Motor1 -> IN3/IN4, Motor2 -> IN1/IN2)
 void controlMotor(int motorIdx, int state) {
   motorStates[motorIdx] = state;
-  if (motorIdx == 0) {
+  if (motorIdx == 0) { // Quạt 1 (Phòng khách) - OUT3, OUT4
     if (state == 1) {
-      digitalWrite(MOTOR1_IN1, HIGH);
-      digitalWrite(MOTOR1_IN2, LOW);
+      digitalWrite(MOTOR1_IN3, HIGH);
+      digitalWrite(MOTOR1_IN4, LOW);
     } else {
-      digitalWrite(MOTOR1_IN1, LOW);
-      digitalWrite(MOTOR1_IN2, LOW);
+      digitalWrite(MOTOR1_IN3, LOW);
+      digitalWrite(MOTOR1_IN4, LOW);
     }
-  } else if (motorIdx == 1) {
+  } else if (motorIdx == 1) { // Quạt 2 (Phòng ngủ) - OUT1, OUT2
     if (state == 1) {
-      digitalWrite(MOTOR2_IN3, HIGH);
-      digitalWrite(MOTOR2_IN4, LOW);
+      digitalWrite(MOTOR2_IN1, HIGH);
+      digitalWrite(MOTOR2_IN2, LOW);
     } else {
-      digitalWrite(MOTOR2_IN3, LOW);
-      digitalWrite(MOTOR2_IN4, LOW);
+      digitalWrite(MOTOR2_IN1, LOW);
+      digitalWrite(MOTOR2_IN2, LOW);
     }
   }
 }
@@ -158,8 +161,17 @@ void callback(char* topic, byte* payload, unsigned int length) {
     }
   }
   else if (t == "myiot/home/controls/buzzer") {
-    digitalWrite(BUZZER_PIN, state);
+    if (isGasAlert) {
+      digitalWrite(BUZZER_PIN, alarmEnabled ? HIGH : LOW);
+    }
     publishStatus("buzzer", state);
+  }
+  else if (t == "myiot/home/commands/alert") {
+    if (state == 1 && alarmEnabled) {
+      digitalWrite(BUZZER_PIN, HIGH);
+      alertActive = true;
+      alertStartTime = millis();
+    }
   }
   else if (t == "myiot/home/controls/motor1") {
     controlMotor(0, state);
@@ -173,7 +185,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
     Serial.println("Activating Servo to 90 degrees...");
     myServo.write(90);
     servoActive = true;
-    servoStartTime = millis();
+    servoStartTime = millis(); // Cập nhật mốc thời gian TẠI THỜI ĐIỂM nhận lệnh
   }
 }
 
@@ -226,10 +238,10 @@ void setup() {
   myServo.write(0); 
 
   // Motors
-  pinMode(MOTOR1_IN1, OUTPUT);
-  pinMode(MOTOR1_IN2, OUTPUT);
-  pinMode(MOTOR2_IN3, OUTPUT);
-  pinMode(MOTOR2_IN4, OUTPUT);
+  pinMode(MOTOR1_IN3, OUTPUT);
+  pinMode(MOTOR1_IN4, OUTPUT);
+  pinMode(MOTOR2_IN1, OUTPUT);
+  pinMode(MOTOR2_IN2, OUTPUT);
   controlMotor(0, 0);
   controlMotor(1, 0);
 
@@ -266,7 +278,7 @@ void loop() {
     camTriggered = false;
     if (now - lastCamTrigger > 800) {
       client.publish(topic_trigger, "1");
-      Serial.println("Camera Button Pressed!");
+      Serial.printf("[%lu] Camera Button Pressed! (MQTT Trigger Sent)\n", now);
       lastCamTrigger = now;
     }
   }
@@ -283,11 +295,17 @@ void loop() {
     client.loop();
   }
 
-  // 3. Xử lý Servo Timer
-  if (servoActive && (now - servoStartTime >= 10000)) {
+  // 3. Xử lý Servo Timer (Dùng millis() trực tiếp để tránh lỗi underflow do now được tính từ trước callback)
+  if (servoActive && (millis() - servoStartTime >= 10000)) {
     myServo.write(0);
     servoActive = false;
     Serial.println("Servo returned to 0.");
+  }
+
+  // 3.1. Xử lý Còi cảnh báo ngắn (Face Recognition)
+  if (alertActive && (millis() - alertStartTime >= 3000)) {
+    digitalWrite(BUZZER_PIN, LOW);
+    alertActive = false;
   }
 
   // 4. Xử lý PIR Sensor (Vệ sinh - LED 5)

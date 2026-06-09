@@ -24,7 +24,8 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 void captureAndSend() {
-  Serial.println("Capturing photo...");
+  unsigned long start = millis();
+  Serial.printf("[%lu] Capturing photo...\n", start);
   camera_fb_t * fb = NULL;
   fb = esp_camera_fb_get();
   if (!fb) {
@@ -32,7 +33,7 @@ void captureAndSend() {
     return;
   }
 
-  Serial.println("Photo captured! Connecting to server...");
+  Serial.printf("[%lu] Photo captured! Connecting to server...\n", millis());
   HTTPClient http;
   http.begin(upload_url);
   http.addHeader("Content-Type", "application/octet-stream");
@@ -60,10 +61,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   for (unsigned int i = 0; i < length; i++) {
     msg += (char)payload[i];
   }
-  Serial.print("Message arrived [");
-  Serial.print(topic);
-  Serial.print("] ");
-  Serial.println(msg);
+  Serial.printf("[%lu] Message arrived [%s] %s\n", millis(), topic, msg.c_str());
 
   if (String(topic) == topic_capture && msg == "1") {
     captureAndSend();

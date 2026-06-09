@@ -127,9 +127,9 @@ def recognize():
         )
         db.session.add(device_log)
 
-    # Nếu DENIED → ghi log hú còi
+    # Nếu DENIED → ghi log hú còi (chỉ gửi lệnh cảnh báo, còi hú hay không do ESP32 quyết định dựa vào tính năng bật/tắt còi)
     if is_alert:
-        publish_command("myiot/home/controls/buzzer", "1")
+        publish_command("myiot/home/commands/alert", "1")
         alarm_device = Device.query.filter_by(type="alarm").first()
         if not alarm_device:
             alarm_device = Device(type="alarm", room="Phòng Khách", name="Còi báo động")
