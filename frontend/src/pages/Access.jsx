@@ -5,10 +5,50 @@ import {
   Box, Typography, Button, Card, CardContent, Grid, TextField,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Chip, LinearProgress, useTheme, Alert,
-  Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, IconButton
+  Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, IconButton,
+  Switch
 } from "@mui/material";
 
 const FACE_CONFIDENCE_THRESHOLD = 0.67;
+
+const antispoofText = (label) => {
+  if (label === "LIVE") return "Mặt thật";
+  if (label === "SPOOF") return "Giả mạo";
+  if (label === "UNCERTAIN") return "Không chắc";
+  if (label === "DISABLED") return "Bỏ qua fake/real";
+  if (label === "NO_FACE") return "Không thấy mặt";
+  if (label === "ERROR") return "Lỗi fake/real";
+  return label || "--";
+};
+
+const antispoofChipColor = (label) => {
+  if (label === "LIVE") return "success";
+  if (label === "UNCERTAIN") return "warning";
+  if (label === "DISABLED") return "default";
+  return "error";
+};
+
+const antispoofTextColor = (label) => {
+  if (label === "LIVE") return "success.main";
+  if (label === "UNCERTAIN") return "warning.main";
+  if (label === "DISABLED") return "text.secondary";
+  return "error.main";
+};
+
+const deniedReasonText = (reason) => {
+  if (reason === "SPOOF") return "Phát hiện giả mạo";
+  if (reason === "NO_FACE") return "Không thấy mặt";
+  if (reason === "ANTISPOOF_UNCERTAIN") return "Ảnh chưa đủ chắc, hãy thử lại";
+  if (reason === "ANTISPOOF_ERROR") return "Lỗi kiểm tra fake/real";
+  if (reason === "UNKNOWN") return "Không nhận diện được";
+  return reason || "";
+};
+
+const verificationSeverity = (result) => {
+  if (result.result === "GRANTED") return "success";
+  if (result.denied_reason === "ANTISPOOF_UNCERTAIN") return "warning";
+  return "error";
+};
 
 function Access() {
   const theme = useTheme();
@@ -17,6 +57,8 @@ function Access() {
   const [dateFilter, setDateFilter] = useState("");
   const [liveImage, setLiveImage] = useState(null);
   const [selectedLogId, setSelectedLogId] = useState(null);
+  const [antispoofEnabled, setAntispoofEnabled] = useState(true);
+  const [antispoofSaving, setAntispoofSaving] = useState(false);
 
   // Camera state & ref
   const [showCameraDialog, setShowCameraDialog] = useState(false);
@@ -58,6 +100,46 @@ function Access() {
     stopCamera();
     setShowCameraDialog(false);
     setVerificationResult(null);
+  };
+
+  const fetchAntispoofSetting = async () => {
+    try {
+      const response = await fetch("/api/access/antispoof-setting");
+      if (response.ok) {
+        const data = await response.json();
+        setAntispoofEnabled(Boolean(data.enabled));
+      }
+    } catch (err) {
+      console.error("Error loading fake/real setting:", err);
+    }
+  };
+
+  const handleAntispoofToggle = async (event) => {
+    const nextEnabled = event.target.checked;
+    const previousEnabled = antispoofEnabled;
+    setAntispoofEnabled(nextEnabled);
+    setAntispoofSaving(true);
+
+    try {
+      const response = await fetch("/api/access/antispoof-setting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not save fake/real setting");
+      }
+
+      const data = await response.json();
+      setAntispoofEnabled(Boolean(data.enabled));
+    } catch (err) {
+      console.error("Error saving fake/real setting:", err);
+      setAntispoofEnabled(previousEnabled);
+      alert("Không thể lưu trạng thái fake/real. Hãy thử lại.");
+    } finally {
+      setAntispoofSaving(false);
+    }
   };
 
   const captureAndVerify = async () => {
@@ -112,6 +194,7 @@ function Access() {
 
   useEffect(() => {
     fetchAccessLogs();
+    fetchAntispoofSetting();
   }, []);
 
   useEffect(() => {
@@ -155,14 +238,50 @@ function Access() {
   return (
     <Box sx={{ width: '100%' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: { xs: 'flex-start', md: 'center' },
+        gap: 2,
+        flexDirection: { xs: 'column', md: 'row' },
+        mb: 4
+      }}>
         <Box>
           <Typography variant="h4" fontWeight="bold">Lịch sử truy cập</Typography>
           <Typography variant="body2" color="textSecondary">
             Lịch sử nhận diện khuôn mặt tại cửa và các cảnh báo.
           </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+          <Box sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 1.5,
+            py: 0.5,
+            minHeight: 40,
+            border: `1px solid ${theme.palette.divider}`,
+            borderRadius: 1,
+            bgcolor: 'background.paper'
+          }}>
+            <Typography variant="body2" fontWeight="bold" sx={{ whiteSpace: 'nowrap' }}>
+              Fake/real
+            </Typography>
+            <Chip
+              label={antispoofEnabled ? "Bật" : "Tắt"}
+              color={antispoofEnabled ? "success" : "default"}
+              size="small"
+              sx={{ borderRadius: 1, fontWeight: 'bold' }}
+            />
+            <Switch
+              checked={antispoofEnabled}
+              onChange={handleAntispoofToggle}
+              disabled={antispoofSaving}
+              color="success"
+              size="small"
+              inputProps={{ "aria-label": "Bật tắt fake/real" }}
+            />
+          </Box>
           <Button 
             variant="contained" 
             color="primary"
@@ -276,7 +395,21 @@ function Access() {
                           sx={{ fontWeight: 'bold', borderRadius: 1 }}
                         />
                       )}
+                      {displayLog.antispoof_label && (
+                        <Chip
+                          label={antispoofText(displayLog.antispoof_label)}
+                          color={antispoofChipColor(displayLog.antispoof_label)}
+                          variant="outlined"
+                          size="small"
+                          sx={{ fontWeight: 'bold', borderRadius: 1 }}
+                        />
+                      )}
                     </Box>
+                    {displayLog.denied_reason && (
+                      <Typography variant="caption" color="error" display="block" sx={{ mt: 0.5 }}>
+                        {deniedReasonText(displayLog.denied_reason)}
+                      </Typography>
+                    )}
                   </Grid>
 
                   <Grid xs={12} sm={6} md={3}>
@@ -419,19 +552,29 @@ function Access() {
                         <MdWarning /> Đã hú còi
                       </Typography>
                     )}
+                    {log.antispoof_label && (
+                      <Typography
+                        variant="caption"
+                        color={antispoofTextColor(log.antispoof_label)}
+                        display="block"
+                      >
+                        Fake/real: {antispoofText(log.antispoof_label)}
+                        {log.antispoof_label !== "DISABLED" && log.antispoof_score != null ? ` (${(log.antispoof_score * 100).toFixed(1)}%)` : ""}
+                      </Typography>
+                    )}
                   </TableCell>
 
                   {/* Độ chính xác */}
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="body2" fontWeight="bold" color={log.action === 'granted' ? 'success.main' : 'error.main'}>
+                      <Typography variant="body2" fontWeight="bold" color={log.result === 'GRANTED' ? 'success.main' : 'error.main'}>
                         {log.confidence ? `${(log.confidence * 100).toFixed(1)}%` : "--"}
                       </Typography>
                       <Box sx={{ width: 60 }}>
                         <LinearProgress 
                           variant="determinate" 
                           value={log.confidence ? log.confidence * 100 : 0} 
-                          color={log.action === 'granted' ? 'success' : 'error'}
+                          color={log.result === 'GRANTED' ? 'success' : 'error'}
                           sx={{ height: 4, borderRadius: 1 }}
                         />
                       </Box>
@@ -553,7 +696,7 @@ function Access() {
                   </Alert>
                 ) : (
                   <Alert 
-                    severity={verificationResult.result === "GRANTED" ? "success" : "error"}
+                    severity={verificationSeverity(verificationResult)}
                     icon={verificationResult.result === "GRANTED" ? <MdCheckCircle fontSize="inherit" /> : <MdCancel fontSize="inherit" />}
                     sx={{ borderRadius: 2 }}
                   >
@@ -567,6 +710,19 @@ function Access() {
                       {verificationResult.confidence !== undefined && (
                         <Typography variant="body2">
                           📊 Độ tin cậy: <strong>{(verificationResult.confidence * 100).toFixed(1)}%</strong>
+                        </Typography>
+                      )}
+                      {verificationResult.antispoof && (
+                        <Typography variant="body2">
+                          Fake/real: <strong>{antispoofText(verificationResult.antispoof.label)}</strong>
+                          {verificationResult.antispoof.label !== "DISABLED" && verificationResult.antispoof.prob_spoof != null
+                            ? ` (${(verificationResult.antispoof.prob_spoof * 100).toFixed(1)}% spoof)`
+                            : ""}
+                        </Typography>
+                      )}
+                      {verificationResult.denied_reason && (
+                        <Typography variant="body2" color="error">
+                          Lý do: <strong>{deniedReasonText(verificationResult.denied_reason)}</strong>
                         </Typography>
                       )}
                     </Box>

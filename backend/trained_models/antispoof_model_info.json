@@ -1,0 +1,36 @@
+{
+  "onnx_file": "mobilenetv3_antispoof_best.onnx",
+  "input": {
+    "name": "image",
+    "shape": [
+      "unk__1105",
+      224,
+      224,
+      3
+    ],
+    "dtype": "float32",
+    "image_size": 224,
+    "color": "RGB",
+    "range": "[0,255]"
+  },
+  "outputs": [
+    {
+      "name": "prob_spoof",
+      "shape": [
+        "unk__1106",
+        1
+      ]
+    },
+    {
+      "name": "type_prob",
+      "shape": [
+        "unk__1107",
+        2
+      ]
+    }
+  ],
+  "decision": {
+    "prob_spoof": "spoof nếu prob_spoof >= threshold_from_val",
+    "real": "chỉ chạy face recognition nếu prob_spoof < threshold_from_val"
+  }
+}

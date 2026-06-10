@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, session
-from models import db, AccessLog, FaceDataset, Device, ActuatorLog, User
+from models import db, AccessLog, FaceDataset, Device, ActuatorLog, User, SystemSetting
 from extensions import socketio
 from config import Config
-import os, datetime
+import os, datetime, json, shutil
 import onnxruntime as ort
 import numpy as np
 import cv2
@@ -10,11 +10,13 @@ import cv2
 # Import class EmbeddingModel
 from services.embedding_helper import EmbeddingModel
 from services.mqtt_service import publish_command
+from services.antispoof import AntiSpoofModel
 
 # Lấy instance của model
 face_model = EmbeddingModel.get_instance()
 
 access_bp = Blueprint("access", __name__)
+ANTISPOOF_SETTING_KEY = "antispoof_enabled"
 
 
 # ── Lấy lịch sử nhận diện ─────────────────────────────────────────────────
@@ -30,8 +32,42 @@ def get_logs():
         "confidence":         l.confidence,
         "result":             l.result,
         "is_alert":           l.is_alert,
+        "denied_reason":      l.denied_reason,
+        "antispoof_label":    l.antispoof_label,
+        "antispoof_score":    l.antispoof_score,
+        "antispoof_threshold": l.antispoof_threshold,
+        "antispoof_type":     l.antispoof_type,
         "timestamp":          l.timestamp.isoformat(),
     } for l in logs])
+
+
+@access_bp.route("/antispoof-setting", methods=["GET"])
+def get_antispoof_setting():
+    return jsonify(_antispoof_setting_payload())
+
+
+@access_bp.route("/antispoof-setting", methods=["POST"])
+def update_antispoof_setting():
+    data = request.get_json(silent=True) or {}
+    if not isinstance(data.get("enabled"), bool):
+        return jsonify({"error": "enabled must be a boolean"}), 400
+    enabled = data["enabled"]
+
+    if enabled and not _antispoof_available():
+        return jsonify({
+            **_antispoof_setting_payload(),
+            "error": "Anti-spoof model is not available",
+        }), 400
+
+    setting = SystemSetting.query.get(ANTISPOOF_SETTING_KEY)
+    if setting is None:
+        setting = SystemSetting(key=ANTISPOOF_SETTING_KEY, value="1" if enabled else "0")
+        db.session.add(setting)
+    else:
+        setting.value = "1" if enabled else "0"
+    db.session.commit()
+
+    return jsonify(_antispoof_setting_payload())
 
 # ── Lấy ảnh nhận diện mới nhất ──────────────────────────────────────────
 @access_bp.route("/latest-image", methods=["GET"])
@@ -85,8 +121,22 @@ def recognize():
         return jsonify({"error": "Thiếu ảnh"}), 400
 
     # Nhận diện khuôn mặt
-    from services.face_recognition import recognize_face
-    matched_id, confidence = recognize_face(image_path, threshold=Config.FACE_RECOGNITION_THRESHOLD)
+    antispoof_enabled = _runtime_antispoof_enabled()
+    antispoof_result = _run_antispoof(image_path, enabled=antispoof_enabled)
+    can_recognize = (not antispoof_enabled) or antispoof_result.get("is_live", False)
+    _save_antispoof_debug(image_path, filename, antispoof_result)
+
+    matched_id = None
+    confidence = 0.0
+    denied_reason = None
+
+    if can_recognize:
+        from services.face_recognition import recognize_face
+        matched_id, confidence = recognize_face(image_path, threshold=Config.FACE_RECOGNITION_THRESHOLD)
+        if not matched_id:
+            denied_reason = "UNKNOWN"
+    else:
+        denied_reason = _antispoof_denied_reason(antispoof_result)
 
     # Lấy thông tin dataset
     matched_name = None
@@ -103,8 +153,8 @@ def recognize():
         db.session.commit()
 
     # Quyết định: GRANTED hay DENIED
-    result    = "GRANTED" if matched_id and confidence >= Config.FACE_RECOGNITION_THRESHOLD else "DENIED"
-    is_alert  = result == "DENIED"
+    result    = "GRANTED" if can_recognize and matched_id and confidence >= Config.FACE_RECOGNITION_THRESHOLD else "DENIED"
+    is_alert  = result == "DENIED" and _should_alert(denied_reason)
 
     # Ghi access log
     log = AccessLog(
@@ -114,6 +164,11 @@ def recognize():
         confidence         = float(confidence),
         result             = result,
         is_alert           = is_alert,
+        denied_reason      = denied_reason if result == "DENIED" else None,
+        antispoof_label    = antispoof_result.get("label"),
+        antispoof_score    = _safe_float(antispoof_result.get("prob_spoof")),
+        antispoof_threshold = _safe_float(antispoof_result.get("threshold")),
+        antispoof_type     = antispoof_result.get("attack_type"),
     )
     db.session.add(log)
 
@@ -152,4 +207,147 @@ def recognize():
         "confidence":    float(confidence),
         "matched_name":  matched_name,
         "image_path":    f"recog_images/{filename}",
+        "denied_reason": denied_reason if result == "DENIED" else None,
+        "antispoof": {
+            "enabled": antispoof_enabled,
+            "label": antispoof_result.get("label"),
+            "is_live": antispoof_result.get("is_live"),
+            "prob_spoof": antispoof_result.get("prob_spoof"),
+            "threshold": antispoof_result.get("threshold"),
+            "live_max_score": antispoof_result.get("live_max_score"),
+            "spoof_min_score": antispoof_result.get("spoof_min_score"),
+            "attack_type": antispoof_result.get("attack_type"),
+            "attack_probability": antispoof_result.get("attack_probability"),
+            "quality": antispoof_result.get("quality"),
+            "error": antispoof_result.get("error"),
+        },
     })
+
+
+def _antispoof_available():
+    return (
+        bool(Config.ANTISPOOF_ENABLED)
+        and os.path.exists(Config.ANTISPOOF_MODEL_PATH)
+        and os.path.exists(Config.ANTISPOOF_THRESHOLD_CONFIG_PATH)
+    )
+
+
+def _runtime_antispoof_enabled():
+    if not _antispoof_available():
+        return False
+
+    setting = SystemSetting.query.get(ANTISPOOF_SETTING_KEY)
+    if setting is None:
+        return True
+    return setting.value == "1"
+
+
+def _antispoof_setting_payload():
+    return {
+        "available": _antispoof_available(),
+        "enabled": _runtime_antispoof_enabled(),
+    }
+
+
+def _run_antispoof(image_path, enabled=None):
+    if enabled is None:
+        enabled = _runtime_antispoof_enabled()
+
+    if not enabled:
+        return {
+            "ok": True,
+            "face_found": True,
+            "is_live": True,
+            "label": "DISABLED",
+            "prob_spoof": 0.0,
+            "threshold": None,
+            "live_max_score": None,
+            "spoof_min_score": None,
+            "attack_type": None,
+            "attack_probability": None,
+            "quality": None,
+            "error": None,
+        }
+
+    try:
+        return AntiSpoofModel.get_instance().predict_file(image_path)
+    except Exception as exc:
+        print(f"[ERROR] Anti-spoof failed: {exc}")
+        return {
+            "ok": False,
+            "face_found": False,
+            "is_live": False,
+            "label": "ERROR",
+            "prob_spoof": 1.0,
+            "threshold": None,
+            "live_max_score": None,
+            "spoof_min_score": None,
+            "attack_type": None,
+            "attack_probability": None,
+            "quality": None,
+            "error": str(exc),
+        }
+
+
+def _antispoof_denied_reason(antispoof_result):
+    label = antispoof_result.get("label")
+    if label == "SPOOF":
+        return "SPOOF"
+    if label == "NO_FACE":
+        return "NO_FACE"
+    if label == "UNCERTAIN":
+        return "ANTISPOOF_UNCERTAIN"
+    if label == "ERROR":
+        return "ANTISPOOF_ERROR"
+    return "ANTISPOOF"
+
+
+def _should_alert(denied_reason):
+    return denied_reason != "ANTISPOOF_UNCERTAIN"
+
+
+def _save_antispoof_debug(image_path, filename, antispoof_result):
+    if not Config.ANTISPOOF_DEBUG_ENABLED:
+        return
+
+    label = antispoof_result.get("label")
+    if label in (None, "LIVE", "DISABLED"):
+        return
+
+    try:
+        base_name = os.path.splitext(filename)[0]
+        label_dir = os.path.join(Config.ANTISPOOF_DEBUG_DIR, label.lower())
+        os.makedirs(label_dir, exist_ok=True)
+
+        debug_image_path = os.path.join(label_dir, f"{base_name}.jpg")
+        debug_json_path = os.path.join(label_dir, f"{base_name}.json")
+        shutil.copy2(image_path, debug_image_path)
+
+        metadata = {
+            "timestamp": datetime.datetime.now().isoformat(),
+            "source_image": f"recog_images/{filename}",
+            "label": label,
+            "prob_spoof": antispoof_result.get("prob_spoof"),
+            "threshold": antispoof_result.get("threshold"),
+            "live_max_score": antispoof_result.get("live_max_score"),
+            "spoof_min_score": antispoof_result.get("spoof_min_score"),
+            "attack_type": antispoof_result.get("attack_type"),
+            "attack_probability": antispoof_result.get("attack_probability"),
+            "quality": antispoof_result.get("quality"),
+            "box": antispoof_result.get("box"),
+            "face_box": antispoof_result.get("face_box"),
+            "error": antispoof_result.get("error"),
+        }
+        with open(debug_json_path, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        print(f"[WARNING] Could not save anti-spoof debug sample: {exc}")
+
+
+def _safe_float(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None

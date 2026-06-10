@@ -26,6 +26,17 @@ class User(db.Model):
         return f"<User {self.username}>"
 
 
+class SystemSetting(db.Model):
+    __tablename__ = "system_settings"
+
+    key        = db.Column(db.String(64), primary_key=True)
+    value      = db.Column(db.String(512), nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+    def __repr__(self):
+        return f"<SystemSetting {self.key}>"
+
+
 # ── Face Datasets ──────────────────────────────────────────────────────────
 class FaceDataset(db.Model):
     __tablename__ = "face_datasets"
@@ -136,6 +147,11 @@ class AccessLog(db.Model):
     confidence         = db.Column(db.Float)
     result             = db.Column(db.String(16), nullable=False)               # GRANTED | DENIED
     is_alert           = db.Column(db.Boolean, default=False)                   # true nếu trigger còi
+    denied_reason      = db.Column(db.String(32), nullable=True)
+    antispoof_label    = db.Column(db.String(16), nullable=True)
+    antispoof_score    = db.Column(db.Float, nullable=True)
+    antispoof_threshold = db.Column(db.Float, nullable=True)
+    antispoof_type     = db.Column(db.String(16), nullable=True)
     timestamp          = db.Column(db.DateTime, default=datetime.now)
 
     def __repr__(self):
