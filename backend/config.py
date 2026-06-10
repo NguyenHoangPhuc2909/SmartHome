@@ -20,4 +20,6 @@ class Config:
 
     # ── Face Recognition Model (MobileFaceNet Embedding) ──────────────────
     FACE_MODEL_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "trained_models", "mobilefacenet.onnx")
-    FACE_RECOGNITION_THRESHOLD = 0.55  # Confidence threshold (0-1)
+    FACE_RECOGNITION_THRESHOLD = float(os.getenv("FACE_RECOGNITION_THRESHOLD", "0.67"))
+    FACE_RECOGNITION_MARGIN = float(os.getenv("FACE_RECOGNITION_MARGIN", "0.05"))
+    FACE_TEMPLATE_MAX_SAMPLES = int(os.getenv("FACE_TEMPLATE_MAX_SAMPLES", "40"))
