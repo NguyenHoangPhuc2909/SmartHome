@@ -186,9 +186,9 @@ def auto_control_devices():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
-                # Chỉ ghi log và Publish MQTT nếu trạng thái thay đổi
+                # Chỉ ghi log và Publish MQTT nếu trạng thái thay đổi hoặc chuyển chế độ hoạt động về AI
                 last_log = ActuatorLog.query.filter_by(device_id=dev.id).order_by(ActuatorLog.timestamp.desc()).first()
-                if not last_log or last_log.status != pred_status:
+                if not last_log or last_log.status != pred_status or last_log.mode != "AI":
                     # Publish MQTT command cho AI
                     topic = get_mqtt_topic(dev)
                     if topic:
@@ -259,7 +259,7 @@ def simulate_devices():
                 humi=humi,
                 light=light,
                 gas=gas,
-                timestamp=dt
+                timestamp=datetime.datetime.now()
             ))
 
         devices_map = {
@@ -275,14 +275,19 @@ def simulate_devices():
             if dev:
                 pred_status = predictions.get(dev.id, 0)
                 
-                # Chỉ ghi log trạng thái AI cho thiết bị vào ActuatorLog nếu trạng thái đổi
+                # Chỉ ghi log trạng thái AI cho thiết bị vào ActuatorLog nếu trạng thái đổi hoặc chuyển chế độ hoạt động về AI
                 last_log = ActuatorLog.query.filter_by(device_id=dev.id).order_by(ActuatorLog.timestamp.desc()).first()
-                if not last_log or last_log.status != pred_status:
+                if not last_log or last_log.status != pred_status or last_log.mode != "AI":
+                    # Publish MQTT command cho AI trong simulation để đồng bộ phần cứng
+                    topic = get_mqtt_topic(dev)
+                    if topic:
+                        publish_command(topic, pred_status)
+
                     db.session.add(ActuatorLog(
                         device_id=dev.id,
                         status=pred_status,
                         mode="AI",
-                        timestamp=dt
+                        timestamp=datetime.datetime.now()
                     ))
                     state_changed = True
                 
@@ -348,7 +353,6 @@ def control_device(device_id):
 
     # Publish MQTT command
     topic = get_mqtt_topic(device)
-    print(f"[DEBUG] Control device {device_id}: name={device.name!r}, type={device.type!r}, room={device.room!r} -> topic={topic!r}")
     if topic:
         publish_command(topic, status)
     else:
