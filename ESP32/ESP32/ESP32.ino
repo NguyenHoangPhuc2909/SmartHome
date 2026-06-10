@@ -323,7 +323,7 @@ void loop() {
   if (now - lastLdrCheck > 2000) {
     lastLdrCheck = now;
     int ldrValue = analogRead(LDR_PIN);
-    int isDark = (ldrValue < 1500) ? 1 : 0;
+    int isDark = (ldrValue > 1500) ? 1 : 0;
     if (isDark != lastLdrState) {
       controlLed(3, isDark); // LED thứ 4 (index 3)
       publishStatus("led4", isDark);

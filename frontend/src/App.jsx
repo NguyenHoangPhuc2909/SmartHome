@@ -40,6 +40,14 @@ export default function App() {
       fetchNotifications();
     });
 
+    socket.on("realtime_sensors", (data) => {
+      useStore.getState().setSensors(data);
+    });
+
+    socket.on("refresh_sensor_history", () => {
+      useStore.getState().fetchSensorHistory();
+    });
+
     socket.on("refresh_access_logs", () => {
       fetchAccessLogs();
       fetchNotifications();

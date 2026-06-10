@@ -43,8 +43,14 @@ def on_message(client, userdata, msg):
                 
                 now = datetime.datetime.now()
                 
-                # Cập nhật socket liên tục cho WebUI
-                socketio.emit("refresh_devices", namespace="/")
+                # Cập nhật socket liên tục cho WebUI với số liệu realtime ngay lập tức
+                socketio.emit("realtime_sensors", {
+                    "temp": temp,
+                    "humi": humi,
+                    "light": light,
+                    "gas": gas
+                }, namespace="/")
+                
                 if gas > 3000:
                     socketio.emit("gas_alert", {"gas_level": gas, "message": "Nguy hiểm: Rò rỉ khí Gas!"}, namespace="/")
                 
@@ -58,6 +64,10 @@ def on_message(client, userdata, msg):
                         should_save = False
 
                 if should_save:
+                    # Phát event refresh_sensor_history để báo frontend biểu đồ có data mới
+                    socketio.emit("refresh_sensor_history", namespace="/")
+                    # Vẫn giữ refresh_devices để cập nhật trạng thái chung
+                    socketio.emit("refresh_devices", namespace="/")
                     db.session.add(SensorLog(
                         device_id=master_sensor.id,
                         temp=temp,

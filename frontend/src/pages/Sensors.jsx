@@ -16,8 +16,6 @@ function Sensors() {
   const theme = useTheme();
   const { sensors, devices, fetchDevices, sensorHistory, fetchSensorHistory } = useStore();
   const [selectedSensor, setSelectedSensor] = useState("temp");
-  const [history, setHistory] = useState([]);
-  
   const masterSensor = devices.find(d => d.type === "sensor");
 
   // Fetch devices để lấy masterSensor nếu chưa có
@@ -25,24 +23,6 @@ function Sensors() {
     fetchDevices();
     fetchSensorHistory();
   }, []);
-
-  // Lấy lịch sử cảm biến khi có masterSensor hoặc khi có data realtime mới
-  useEffect(() => {
-    if (masterSensor) {
-      axios.get(`/api/devices/${masterSensor.id}/logs?limit=50`)
-        .then(res => {
-          const data = res.data.map(log => ({
-            time: new Date(log.timestamp).toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-            temp: log.temp,
-            humi: log.humi,
-            light: log.light,
-            gas: log.gas
-          })).reverse();
-          setHistory(data);
-        })
-        .catch(console.error);
-    }
-  }, [masterSensor, sensors]); // Re-fetch khi realtime sensors thay đổi (mỗi 5s)
 
   return (
     <Box sx={{ width: '100%' }}>
@@ -108,13 +88,13 @@ function Sensors() {
             Biểu đồ lịch sử: {chartConfig[selectedSensor].name}
           </Typography>
           <Typography variant="caption" sx={{ color: chartConfig[selectedSensor].color, fontWeight: 'bold', bgcolor: `${chartConfig[selectedSensor].color}15`, px: 1.5, py: 0.5, borderRadius: 1 }}>
-            {history.length} mốc dữ liệu
+            {sensorHistory.length} mốc dữ liệu
           </Typography>
         </Box>
         
-        {history.length > 0 ? (
+        {sensorHistory.length > 0 ? (
           <ResponsiveContainer width="100%" height={320}>
-            <LineChart data={history} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+            <LineChart data={sensorHistory} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.palette.divider} />
               <XAxis 
                 dataKey="time" 
