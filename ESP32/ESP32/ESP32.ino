@@ -223,7 +223,7 @@ void setup() {
   dht.begin();
   
   // Cài đặt các chân Sensor
-  pinMode(PIR_PIN, INPUT_PULLDOWN); 
+  pinMode(PIR_PIN, INPUT); 
   
   // Nút bấm Camera
   pinMode(CAM_BTN_PIN, INPUT_PULLUP);
@@ -309,14 +309,13 @@ void loop() {
   }
 
   // 4. Xử lý PIR Sensor (Vệ sinh - LED 5)
-  static unsigned long lastPirChange = 0;
   int pirState = digitalRead(PIR_PIN);
-  if (pirState != lastPirState && (now - lastPirChange > 2000)) {
-    lastPirChange = now;
+  if (pirState != lastPirState) {
+    lastPirState = pirState;
     int isOn = (pirState == HIGH) ? 1 : 0;
     controlLed(4, isOn); // LED thứ 5 (index 4)
     publishStatus("led5", isOn);
-    lastPirState = pirState;
+    Serial.printf("PIR Triggered: pirState = %d -> LED 5 is %s\n", pirState, isOn ? "ON" : "OFF");
   }
 
   // 5. Xử lý LDR Sensor (Cổng - LED 4), kiểm tra mỗi 2 giây
@@ -324,7 +323,7 @@ void loop() {
   if (now - lastLdrCheck > 2000) {
     lastLdrCheck = now;
     int ldrValue = analogRead(LDR_PIN);
-    int isDark = (ldrValue < 1500) ? 1 : 0;
+    int isDark = (ldrValue > 1500) ? 1 : 0;
     if (isDark != lastLdrState) {
       controlLed(3, isDark); // LED thứ 4 (index 3)
       publishStatus("led4", isDark);

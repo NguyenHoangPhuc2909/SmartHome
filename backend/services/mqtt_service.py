@@ -41,23 +41,42 @@ def on_message(client, userdata, msg):
                     db.session.add(master_sensor)
                     db.session.commit()
                 
-                # Cập nhật sensor log mới nhất mỗi khi nhận được (cách nhau ~5s theo cấu hình ESP32)
                 now = datetime.datetime.now()
-                db.session.add(SensorLog(
-                    device_id=master_sensor.id,
-                    temp=temp,
-                    humi=humi,
-                    light=light,
-                    gas=gas,
-                    timestamp=now
-                ))
-                db.session.commit()
                 
-                socketio.emit("refresh_devices", namespace="/")
+                # Cập nhật socket liên tục cho WebUI với số liệu realtime ngay lập tức
+                socketio.emit("realtime_sensors", {
+                    "temp": temp,
+                    "humi": humi,
+                    "light": light,
+                    "gas": gas
+                }, namespace="/")
                 
-                # Cảnh báo rò rỉ gas trực tiếp trên Web (ngưỡng 3000/4095)
                 if gas > 3000:
                     socketio.emit("gas_alert", {"gas_level": gas, "message": "Nguy hiểm: Rò rỉ khí Gas!"}, namespace="/")
+                
+                # LOGIC LỌC: Chỉ lưu vào Database nếu log gần nhất cách đây > 60 giây
+                last_log = SensorLog.query.filter_by(device_id=master_sensor.id).order_by(SensorLog.timestamp.desc()).first()
+                should_save = True
+                
+                if last_log:
+                    time_diff = (now - last_log.timestamp).total_seconds()
+                    if time_diff < 60:
+                        should_save = False
+
+                if should_save:
+                    # Phát event refresh_sensor_history để báo frontend biểu đồ có data mới
+                    socketio.emit("refresh_sensor_history", namespace="/")
+                    # Vẫn giữ refresh_devices để cập nhật trạng thái chung
+                    socketio.emit("refresh_devices", namespace="/")
+                    db.session.add(SensorLog(
+                        device_id=master_sensor.id,
+                        temp=temp,
+                        humi=humi,
+                        light=light,
+                        gas=gas,
+                        timestamp=now
+                    ))
+                    db.session.commit()
                     
         except Exception as e:
             print(f"[MQTT] Parse sensor data error: {e}")
@@ -81,14 +100,20 @@ def on_message(client, userdata, msg):
                 if dev:
                     # Ghi nhận thay đổi trạng thái từ phần cứng
                     from models import ActuatorLog
-                    db.session.add(ActuatorLog(
-                        device_id=dev.id,
-                        status=status_val,
-                        mode="Manual",
-                        timestamp=datetime.datetime.now()
-                    ))
-                    db.session.commit()
-                    socketio.emit("refresh_devices", namespace="/")
+                    
+                    # LOGIC LỌC: Chỉ ghi log nếu trạng thái thực sự thay đổi 
+                    # (Để tránh phần cứng echo lại trạng thái vừa được Web/Schedule yêu cầu)
+                    last_log = ActuatorLog.query.filter_by(device_id=dev.id).order_by(ActuatorLog.timestamp.desc()).first()
+                    
+                    if not last_log or last_log.status != status_val:
+                        db.session.add(ActuatorLog(
+                            device_id=dev.id,
+                            status=status_val,
+                            mode="Manual",
+                            timestamp=datetime.datetime.now()
+                        ))
+                        db.session.commit()
+                        socketio.emit("refresh_devices", namespace="/")
         except Exception as e:
             print(f"[MQTT] Parse status data error: {e}")
 

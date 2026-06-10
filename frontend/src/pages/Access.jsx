@@ -9,7 +9,7 @@ import {
   Switch
 } from "@mui/material";
 
-const FACE_CONFIDENCE_THRESHOLD = 0.67;
+const FACE_CONFIDENCE_THRESHOLD = 0.6;
 
 const antispoofText = (label) => {
   if (label === "LIVE") return "Mặt thật";
