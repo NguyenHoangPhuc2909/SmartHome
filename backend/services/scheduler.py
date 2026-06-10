@@ -40,6 +40,17 @@ def check_schedules():
             mode      = "Schedule",
         )
         db.session.add(log)
+        
+        # Bắn lệnh MQTT xuống thiết bị thực tế
+        from models import Device
+        device = Device.query.get(s.device_id)
+        if device:
+            from routes.device import get_mqtt_topic
+            topic = get_mqtt_topic(device)
+            if topic:
+                from services.mqtt_service import publish_command
+                publish_command(topic, s.action)
+
         executed = True
 
     if executed:
