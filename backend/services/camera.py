@@ -4,6 +4,7 @@ import time
 import threading
 import numpy as np
 from config import Config
+from services.face_preprocessing import align_or_crop_face
 
 # Nhãn tiếng Việt hiển thị trên màn hình
 ANGLE_LABEL = {
@@ -112,6 +113,7 @@ class VideoCamera(object):
 
         # Tăng tốc độ mượt (chụp dataset cần nhanh)
         img = cv2.flip(img, 1) # Chụp qua webcam thường bị ngược gương, nên flip lại
+        raw_img = img.copy()
         
         h_img, w_img = img.shape[:2]
         center_x, center_y = w_img // 2, h_img // 2
@@ -182,34 +184,10 @@ class VideoCamera(object):
         # ── Lưu ảnh ──
         if self.is_capturing and is_ready and save_box is not None:
             if now - self.last_save_time > 0.8:
-                x, y, w, h = save_box[:4].astype(int)
-                cx, cy = x + w // 2, y + h // 2
-                size = int(max(w, h) * 1.1) # Padding 10%
-                
-                img_to_crop = img
-                if len(save_box) >= 14:
-                    re_x, re_y = save_box[4], save_box[5]
-                    le_x, le_y = save_box[6], save_box[7]
-                    if re_x > le_x:
-                        re_x, re_y, le_x, le_y = le_x, le_y, re_x, re_y
-                    dx = le_x - re_x
-                    dy = le_y - re_y
-                    if dx > 0:
-                        angle = np.degrees(np.arctan2(dy, dx))
-                        if abs(angle) < 45:
-                            M = cv2.getRotationMatrix2D((float(cx), float(cy)), angle, 1.0)
-                            img_to_crop = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), flags=cv2.INTER_CUBIC)
-                
-                new_x = max(0, cx - size // 2)
-                new_y = max(0, cy - size // 2)
-                new_x_end = min(img_to_crop.shape[1], new_x + size)
-                new_y_end = min(img_to_crop.shape[0], new_y + size)
-                
-                face_crop = img_to_crop[new_y:new_y_end, new_x:new_x_end]
-                
-                if face_crop is not None and face_crop.size > 0:
-                    face_resized = cv2.resize(face_crop, (112, 112))
-                    cv2.imwrite(os.path.join(path, f"{current_angle}_{current_count}.jpg"), face_resized)
+                face_aligned = align_or_crop_face(raw_img, save_box, output_size=(112, 112))
+
+                if face_aligned is not None and face_aligned.size > 0:
+                    cv2.imwrite(os.path.join(path, f"{current_angle}_{current_count}.jpg"), face_aligned)
                     self.last_save_time = now
                     
                     if current_count + 1 >= self.limit_per_pos:

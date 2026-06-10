@@ -12,3 +12,4 @@ scikit-learn
 onnxruntime
 Flask-SocketIO
 simple-websocket
+paho-mqtt

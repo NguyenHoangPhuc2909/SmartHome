@@ -127,7 +127,16 @@ def update_sensor():
             if time_diff < 60:
                 should_save = False
 
+        socketio.emit("realtime_sensors", {
+            "temp": temp,
+            "humi": humi,
+            "light": light,
+            "gas": gas
+        }, namespace="/")
+
         if should_save:
+            socketio.emit("refresh_sensor_history", namespace="/")
+            socketio.emit("refresh_devices", namespace="/")
             db.session.add(SensorLog(
                 device_id=master_sensor.id,
                 temp=temp,
@@ -138,7 +147,6 @@ def update_sensor():
             ))
             db.session.commit()
 
-        socketio.emit("refresh_devices", namespace="/")
         return jsonify({"status": "ok", "message": "Đã cập nhật cảm biến"})
 
     except Exception as e:

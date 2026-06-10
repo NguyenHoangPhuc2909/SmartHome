@@ -8,6 +8,8 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, IconButton
 } from "@mui/material";
 
+const FACE_CONFIDENCE_THRESHOLD = 0.6;
+
 function Access() {
   const theme = useTheme();
   const { accessLogs, fetchAccessLogs } = useStore();
@@ -240,14 +242,14 @@ function Access() {
                   <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">📊 Độ chính xác</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography variant="subtitle1" fontWeight="bold" color={displayLog.confidence >= 0.65 ? 'success.main' : 'error.main'}>
+                      <Typography variant="subtitle1" fontWeight="bold" color={displayLog.confidence >= FACE_CONFIDENCE_THRESHOLD ? 'success.main' : 'error.main'}>
                         {(displayLog.confidence * 100).toFixed(1)}%
                       </Typography>
                       <Box sx={{ flex: 1, ml: 1 }}>
                         <LinearProgress 
                           variant="determinate" 
                           value={displayLog.confidence * 100} 
-                          color={displayLog.confidence >= 0.65 ? 'success' : 'error'}
+                          color={displayLog.confidence >= FACE_CONFIDENCE_THRESHOLD ? 'success' : 'error'}
                           sx={{ height: 6, borderRadius: 1 }}
                         />
                       </Box>

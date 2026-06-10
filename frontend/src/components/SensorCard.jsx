@@ -13,7 +13,7 @@ const sensorConfig = {
 function SensorCard({ type, value, room, selected, onClick, history = [] }) {
   const config  = sensorConfig[type] || {};
   const Icon    = config.icon;
-  const isAlert = type === "gas" && value !== "--" && value > 500;
+  const isAlert = type === "gas" && value !== "--" && value > 3000;
 
   // Tính trend (so sánh value hiện tại với giá trị đầu tiên trong history)
   let trendStr = null;
