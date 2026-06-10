@@ -173,9 +173,12 @@ def capture_stop():
     if user_name:
         ds = FaceDataset.query.filter_by(name=user_name, user_id=session["user_id"]).first()
         if ds:
-            face_model = EmbeddingModel.get_instance()
+            model_mobilefacenet = EmbeddingModel.get_instance("mobilefacenet")
+            model_resnet34 = EmbeddingModel.get_instance("resnet34")
             path = f"captured_faces/{ds.name}"
-            embeddings = []
+            
+            embeddings_mobilefacenet = []
+            embeddings_resnet34 = []
             
             # Quét ảnh vừa chụp
             if os.path.exists(path):
@@ -183,12 +186,24 @@ def capture_stop():
                     if fname.endswith(".jpg"):
                         fpath = os.path.join(path, fname)
                         img = cv2.imread(fpath)
-                        emb = _extract_training_embedding(face_model, img)
-                        if emb is not None:
-                            embeddings.append(emb)
+                        
+                        emb_mf = _extract_training_embedding(model_mobilefacenet, img)
+                        if emb_mf is not None:
+                            embeddings_mobilefacenet.append(emb_mf)
+                            
+                        emb_rn = _extract_training_embedding(model_resnet34, img)
+                        if emb_rn is not None:
+                            embeddings_resnet34.append(emb_rn)
             
-            if embeddings:
-                ds.embedding = json.dumps(_build_embedding_template(embeddings))
+            has_embedding = False
+            if embeddings_mobilefacenet:
+                ds.embedding = json.dumps(_build_embedding_template(embeddings_mobilefacenet))
+                has_embedding = True
+            if embeddings_resnet34:
+                ds.embedding_resnet34 = json.dumps(_build_embedding_template(embeddings_resnet34))
+                has_embedding = True
+                
+            if has_embedding:
                 db.session.commit()
                 print(f"[INFO] Đã lưu embedding cho {ds.name} thành công!")
 

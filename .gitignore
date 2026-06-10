@@ -12,3 +12,5 @@ backend/antispoof_debug/
 *.sql
 *.db
 *.md
+*.onnx
+*.onnx.data

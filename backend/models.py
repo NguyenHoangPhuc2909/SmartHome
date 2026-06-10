@@ -46,6 +46,7 @@ class FaceDataset(db.Model):
     name       = db.Column(db.String(128), nullable=False)
     # Thêm cột embedding kiểu Text để lưu chuỗi JSON của mảng vector đặc trưng
     embedding  = db.Column(db.Text, nullable=True) 
+    embedding_resnet34 = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     access_logs = db.relationship("AccessLog", backref="matched_dataset", lazy=True,

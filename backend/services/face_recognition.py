@@ -41,9 +41,12 @@ def _normalize_embedding(embedding):
 
 
 def _load_template(embedding_json):
+    if not embedding_json:
+        raise ValueError("Empty embedding JSON")
+        
     raw = json.loads(embedding_json)
 
-    # Backward compatibility with the old DB format: a single centroid list.
+    # Nếu DB format là dạng list cũ (chỉ có mobilefacenet)
     if isinstance(raw, list):
         centroid = _normalize_embedding(raw)
         return centroid, np.empty((0, centroid.shape[0]), dtype=np.float32)
@@ -73,7 +76,7 @@ def _score_template(query_emb, centroid, samples):
     return max(centroid_score, best_sample, 0.65 * best_sample + 0.35 * top_mean)
 
 
-def recognize_face(image_path: str, threshold: float = 0.65):
+def recognize_face(image_path: str, threshold: float = 0.65, model_type: str = "mobilefacenet"):
     img = cv2.imread(image_path)
     if img is None:
         return None, 0.0
@@ -82,6 +85,7 @@ def recognize_face(image_path: str, threshold: float = 0.65):
     if query_crop is None:
         return None, 0.0
 
+    face_model = EmbeddingModel.get_instance(model_type)
     query_emb = face_model.extract_embedding(query_crop)
     if query_emb is None:
         return None, 0.0
@@ -91,13 +95,15 @@ def recognize_face(image_path: str, threshold: float = 0.65):
     second_score = 0.0
 
     for ds in FaceDataset.query.all():
-        if not ds.embedding:
+        # Lấy đúng cột embedding tương ứng với model_type
+        ds_embedding_json = ds.embedding_resnet34 if model_type == "resnet34" else ds.embedding
+        if not ds_embedding_json:
             continue
 
         try:
-            centroid, samples = _load_template(ds.embedding)
+            centroid, samples = _load_template(ds_embedding_json)
         except Exception as exc:
-            print(f"[WARNING] Invalid embedding template for dataset {ds.id}: {exc}")
+            print(f"[WARNING] Invalid embedding template for dataset {ds.id} with model {model_type}: {exc}")
             continue
 
         score = _score_template(query_emb, centroid, samples)

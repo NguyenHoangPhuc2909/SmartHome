@@ -12,11 +12,9 @@ from services.embedding_helper import EmbeddingModel
 from services.mqtt_service import publish_command
 from services.antispoof import AntiSpoofModel
 
-# Lấy instance của model
-face_model = EmbeddingModel.get_instance()
-
 access_bp = Blueprint("access", __name__)
 ANTISPOOF_SETTING_KEY = "antispoof_enabled"
+FACE_MODEL_SETTING_KEY = "face_model_type"
 
 
 # ── Lấy lịch sử nhận diện ─────────────────────────────────────────────────
@@ -68,6 +66,32 @@ def update_antispoof_setting():
     db.session.commit()
 
     return jsonify(_antispoof_setting_payload())
+
+
+@access_bp.route("/face-model-setting", methods=["GET"])
+def get_face_model_setting():
+    setting = SystemSetting.query.get(FACE_MODEL_SETTING_KEY)
+    model_type = setting.value if setting else "mobilefacenet"
+    return jsonify({"model_type": model_type})
+
+
+@access_bp.route("/face-model-setting", methods=["POST"])
+def update_face_model_setting():
+    data = request.get_json(silent=True) or {}
+    model_type = data.get("model_type")
+    if model_type not in ["mobilefacenet", "resnet34"]:
+        return jsonify({"error": "Invalid model_type"}), 400
+
+    setting = SystemSetting.query.get(FACE_MODEL_SETTING_KEY)
+    if setting is None:
+        setting = SystemSetting(key=FACE_MODEL_SETTING_KEY, value=model_type)
+        db.session.add(setting)
+    else:
+        setting.value = model_type
+    db.session.commit()
+
+    return jsonify({"model_type": model_type})
+
 
 # ── Lấy ảnh nhận diện mới nhất ──────────────────────────────────────────
 @access_bp.route("/latest-image", methods=["GET"])
@@ -132,7 +156,11 @@ def recognize():
 
     if can_recognize:
         from services.face_recognition import recognize_face
-        matched_id, confidence = recognize_face(image_path, threshold=Config.FACE_RECOGNITION_THRESHOLD)
+        # Lấy setting active model
+        model_setting = SystemSetting.query.get(FACE_MODEL_SETTING_KEY)
+        active_model = model_setting.value if model_setting else "mobilefacenet"
+        
+        matched_id, confidence = recognize_face(image_path, threshold=Config.FACE_RECOGNITION_THRESHOLD, model_type=active_model)
         if not matched_id:
             denied_reason = "UNKNOWN"
     else:

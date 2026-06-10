@@ -6,7 +6,7 @@ import {
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Paper, Chip, LinearProgress, useTheme, Alert,
   Dialog, DialogTitle, DialogContent, DialogActions, CircularProgress, IconButton,
-  Switch
+  Switch, Select, MenuItem
 } from "@mui/material";
 
 const FACE_CONFIDENCE_THRESHOLD = 0.6;
@@ -59,6 +59,8 @@ function Access() {
   const [selectedLogId, setSelectedLogId] = useState(null);
   const [antispoofEnabled, setAntispoofEnabled] = useState(true);
   const [antispoofSaving, setAntispoofSaving] = useState(false);
+  const [faceModel, setFaceModel] = useState("mobilefacenet");
+  const [faceModelSaving, setFaceModelSaving] = useState(false);
 
   // Camera state & ref
   const [showCameraDialog, setShowCameraDialog] = useState(false);
@@ -70,8 +72,8 @@ function Access() {
   const startCamera = async () => {
     setVerificationResult(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { width: 320, height: 320, facingMode: "user" } 
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 320, height: 320, facingMode: "user" }
       });
       setCameraStream(stream);
       if (videoRef.current) {
@@ -142,11 +144,51 @@ function Access() {
     }
   };
 
+  const fetchFaceModelSetting = async () => {
+    try {
+      const response = await fetch("/api/access/face-model-setting");
+      if (response.ok) {
+        const data = await response.json();
+        setFaceModel(data.model_type || "mobilefacenet");
+      }
+    } catch (err) {
+      console.error("Error loading face model setting:", err);
+    }
+  };
+
+  const handleFaceModelChange = async (event) => {
+    const nextModel = event.target.value;
+    const previousModel = faceModel;
+    setFaceModel(nextModel);
+    setFaceModelSaving(true);
+
+    try {
+      const response = await fetch("/api/access/face-model-setting", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_type: nextModel }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Could not save face model setting");
+      }
+
+      const data = await response.json();
+      setFaceModel(data.model_type);
+    } catch (err) {
+      console.error("Error saving face model setting:", err);
+      setFaceModel(previousModel);
+      alert("Không thể lưu cài đặt model. Hãy thử lại.");
+    } finally {
+      setFaceModelSaving(false);
+    }
+  };
+
   const captureAndVerify = async () => {
     if (!videoRef.current) return;
     setVerifying(true);
     setVerificationResult(null);
-    
+
     try {
       const canvas = document.createElement("canvas");
       canvas.width = videoRef.current.videoWidth;
@@ -156,22 +198,22 @@ function Access() {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      
+
       canvas.toBlob(async (blob) => {
         if (!blob) {
           setVerifying(false);
           return;
         }
-        
+
         const formData = new FormData();
         formData.append("image", blob, "capture.jpg");
-        
+
         try {
           const response = await fetch("/api/access/recognize", {
             method: "POST",
             body: formData,
           });
-          
+
           if (response.ok) {
             const data = await response.json();
             setVerificationResult(data);
@@ -195,6 +237,7 @@ function Access() {
   useEffect(() => {
     fetchAccessLogs();
     fetchAntispoofSetting();
+    fetchFaceModelSetting();
   }, []);
 
   useEffect(() => {
@@ -253,6 +296,20 @@ function Access() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minHeight: 40 }}>
+            <Typography variant="body2" fontWeight="bold">Model:</Typography>
+            <Select
+              value={faceModel}
+              onChange={handleFaceModelChange}
+              disabled={faceModelSaving}
+              size="small"
+              sx={{ bgcolor: 'background.paper', borderRadius: 1, height: 40 }}
+            >
+              <MenuItem value="mobilefacenet">MobileFaceNet</MenuItem>
+              <MenuItem value="resnet34">ResNet34</MenuItem>
+            </Select>
+          </Box>
+
           <Box sx={{
             display: 'flex',
             alignItems: 'center',
@@ -282,8 +339,8 @@ function Access() {
               inputProps={{ "aria-label": "Bật tắt fake/real" }}
             />
           </Box>
-          <Button 
-            variant="contained" 
+          <Button
+            variant="contained"
             color="primary"
             startIcon={<MdPhotoCamera />}
             onClick={handleOpenDialog}
@@ -291,8 +348,8 @@ function Access() {
           >
             Xác thực khuôn mặt (Cam)
           </Button>
-          <Button 
-            variant="outlined" 
+          <Button
+            variant="outlined"
             startIcon={<MdRefresh />}
             onClick={fetchAccessLogs}
             sx={{ fontWeight: 'bold' }}
@@ -303,7 +360,7 @@ function Access() {
       </Box>
 
       {/* Live Widget */}
-      <Card sx={{ mb: 4,  border: `1px solid ${theme.palette.divider}`, boxShadow: 'none' }}>
+      <Card sx={{ mb: 4, border: `1px solid ${theme.palette.divider}`, boxShadow: 'none' }}>
         <CardContent>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -359,15 +416,15 @@ function Access() {
                   </Grid>
 
                   <Grid xs={12} sm={6} md={3}>
-                    <Typography variant="caption" color="textSecondary" display="block">📊 Độ chính xác</Typography>
+                    <Typography variant="caption" color="textSecondary" display="block">📊 Độ tương đồng</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Typography variant="subtitle1" fontWeight="bold" color={displayLog.confidence >= FACE_CONFIDENCE_THRESHOLD ? 'success.main' : 'error.main'}>
                         {(displayLog.confidence * 100).toFixed(1)}%
                       </Typography>
                       <Box sx={{ flex: 1, ml: 1 }}>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={displayLog.confidence * 100} 
+                        <LinearProgress
+                          variant="determinate"
+                          value={displayLog.confidence * 100}
                           color={displayLog.confidence >= FACE_CONFIDENCE_THRESHOLD ? 'success' : 'error'}
                           sx={{ height: 6, borderRadius: 1 }}
                         />
@@ -378,19 +435,19 @@ function Access() {
                   <Grid xs={12} sm={6} md={3}>
                     <Typography variant="caption" color="textSecondary" display="block">⚠️ Kết quả</Typography>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                      <Chip 
-                        icon={displayLog.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
-                        label={displayLog.result === "GRANTED" ? "CHO VÀO" : "TỪ CHỐI"} 
+                      <Chip
+                        icon={displayLog.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />}
+                        label={displayLog.result === "GRANTED" ? "CHO VÀO" : "TỪ CHỐI"}
                         color={displayLog.result === "GRANTED" ? "success" : "error"}
                         variant="outlined"
                         size="small"
                         sx={{ fontWeight: 'bold', borderRadius: 1 }}
                       />
                       {displayLog.is_alert && (
-                        <Chip 
-                          icon={<MdWarning />} 
-                          label="Còi" 
-                          color="error" 
+                        <Chip
+                          icon={<MdWarning />}
+                          label="Còi"
+                          color="error"
                           size="small"
                           sx={{ fontWeight: 'bold', borderRadius: 1 }}
                         />
@@ -429,7 +486,7 @@ function Access() {
 
       {/* Cảnh báo Alert */}
       {alertCount > 0 && (
-        <Alert severity="error" icon={<MdWarning fontSize="inherit" />} sx={{ mb: 4,  fontWeight: 'bold' }}>
+        <Alert severity="error" icon={<MdWarning fontSize="inherit" />} sx={{ mb: 4, fontWeight: 'bold' }}>
           Đã phát hiện {alertCount} lần người lạ (Còi cảnh báo đã được kích hoạt).
         </Alert>
       )}
@@ -437,7 +494,7 @@ function Access() {
       {/* Thống kê nhỏ */}
       <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(12, 1fr)', gap: 2, mb: 4 }}>
         {[
-          { label: "Tổng số lượt", value: accessLogs.length, color: 'text.primary', bgcolor: 'background.paper' },
+          { label: "Truy cập gần đây", value: accessLogs.length, color: 'text.primary', bgcolor: 'background.paper' },
           { label: "Đã cho vào", value: grantedCount, color: 'success.main', bgcolor: 'success.light' },
           { label: "Từ chối", value: deniedCount, color: 'error.main', bgcolor: 'error.light' },
         ].map((stat, idx) => (
@@ -483,7 +540,7 @@ function Access() {
             size="small"
             value={dateFilter}
             onChange={(e) => setDateFilter(e.target.value)}
-            sx={{ '& .MuiOutlinedInput-root': {  } }}
+            sx={{ '& .MuiOutlinedInput-root': {} }}
           />
         </Box>
 
@@ -494,7 +551,7 @@ function Access() {
               <TableRow>
                 <TableCell width={80}><strong>Ảnh</strong></TableCell>
                 <TableCell><strong>Người</strong></TableCell>
-                <TableCell><strong>Độ chính xác</strong></TableCell>
+                <TableCell><strong>Độ tương đồng</strong></TableCell>
                 <TableCell><strong>Kết quả</strong></TableCell>
                 <TableCell align="right"><strong>Thời gian</strong></TableCell>
               </TableRow>
@@ -508,19 +565,19 @@ function Access() {
                 </TableRow>
               )}
               {filtered.map((log) => (
-                <TableRow 
+                <TableRow
                   key={log.id}
                   onClick={() => setSelectedLogId(log.id)}
-                  sx={{ 
+                  sx={{
                     cursor: 'pointer',
                     bgcolor: selectedLogId === log.id ? 'action.selected' : 'inherit',
-                    '&:hover': { bgcolor: 'action.hover' } 
+                    '&:hover': { bgcolor: 'action.hover' }
                   }}
                 >
                   {/* Ảnh */}
                   <TableCell>
                     {log.image_path ? (
-                      <Box 
+                      <Box
                         component="img"
                         src={`/api/access/image/${log.id}`}
                         alt="face"
@@ -531,9 +588,9 @@ function Access() {
                         }}
                       />
                     ) : null}
-                    <Box 
-                      sx={{ 
-                        width: 40, height: 40, borderRadius: 1, bgcolor: 'action.selected', 
+                    <Box
+                      sx={{
+                        width: 40, height: 40, borderRadius: 1, bgcolor: 'action.selected',
                         display: log.image_path ? 'none' : 'flex', alignItems: 'center', justifyContent: 'center',
                         color: 'text.disabled'
                       }}
@@ -571,9 +628,9 @@ function Access() {
                         {log.confidence ? `${(log.confidence * 100).toFixed(1)}%` : "--"}
                       </Typography>
                       <Box sx={{ width: 60 }}>
-                        <LinearProgress 
-                          variant="determinate" 
-                          value={log.confidence ? log.confidence * 100 : 0} 
+                        <LinearProgress
+                          variant="determinate"
+                          value={log.confidence ? log.confidence * 100 : 0}
                           color={log.result === 'GRANTED' ? 'success' : 'error'}
                           sx={{ height: 4, borderRadius: 1 }}
                         />
@@ -583,9 +640,9 @@ function Access() {
 
                   {/* Kết quả */}
                   <TableCell>
-                    <Chip 
-                      icon={log.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />} 
-                      label={log.result === "GRANTED" ? "Cho vào" : "Từ chối"} 
+                    <Chip
+                      icon={log.result === "GRANTED" ? <MdCheckCircle /> : <MdCancel />}
+                      label={log.result === "GRANTED" ? "Cho vào" : "Từ chối"}
                       color={log.result === "GRANTED" ? "success" : "error"}
                       variant="outlined"
                       size="small"
@@ -610,8 +667,8 @@ function Access() {
       </Card>
 
       {/* Camera Dialog */}
-      <Dialog 
-        open={showCameraDialog} 
+      <Dialog
+        open={showCameraDialog}
         onClose={handleCloseDialog}
         maxWidth="xs"
         fullWidth
@@ -637,14 +694,14 @@ function Access() {
         <DialogContent dividers sx={{ p: 2 }}>
           <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
             {/* Camera Preview Box */}
-            <Box 
-              sx={{ 
-                width: '100%', 
-                aspectRatio: '1/1', 
+            <Box
+              sx={{
+                width: '100%',
+                aspectRatio: '1/1',
                 maxWidth: 320,
-                borderRadius: 2, 
-                overflow: 'hidden', 
-                bgcolor: 'black', 
+                borderRadius: 2,
+                overflow: 'hidden',
+                bgcolor: 'black',
                 position: 'relative',
                 border: `1px solid ${theme.palette.divider}`,
                 boxShadow: theme.shadows[3]
@@ -662,19 +719,19 @@ function Access() {
                   transform: 'scaleX(-1)' // Mirror for natural look
                 }}
               />
-              
+
               {verifying && (
-                <Box 
-                  sx={{ 
-                    position: 'absolute', 
-                    top: 0, 
-                    left: 0, 
-                    width: '100%', 
-                    height: '100%', 
-                    bgcolor: 'rgba(0,0,0,0.6)', 
-                    display: 'flex', 
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    height: '100%',
+                    bgcolor: 'rgba(0,0,0,0.6)',
+                    display: 'flex',
                     flexDirection: 'column',
-                    alignItems: 'center', 
+                    alignItems: 'center',
                     justifyContent: 'center',
                     gap: 1,
                     color: 'white',
@@ -695,7 +752,7 @@ function Access() {
                     {verificationResult.error}
                   </Alert>
                 ) : (
-                  <Alert 
+                  <Alert
                     severity={verificationSeverity(verificationResult)}
                     icon={verificationResult.result === "GRANTED" ? <MdCheckCircle fontSize="inherit" /> : <MdCancel fontSize="inherit" />}
                     sx={{ borderRadius: 2 }}
@@ -709,7 +766,7 @@ function Access() {
                       </Typography>
                       {verificationResult.confidence !== undefined && (
                         <Typography variant="body2">
-                          📊 Độ tin cậy: <strong>{(verificationResult.confidence * 100).toFixed(1)}%</strong>
+                          📊 Độ tương đồng: <strong>{(verificationResult.confidence * 100).toFixed(1)}%</strong>
                         </Typography>
                       )}
                       {verificationResult.antispoof && (
@@ -733,8 +790,8 @@ function Access() {
           </Box>
         </DialogContent>
         <DialogActions sx={{ p: 2 }}>
-          <Button 
-            onClick={handleCloseDialog} 
+          <Button
+            onClick={handleCloseDialog}
             color="inherit"
             variant="text"
             sx={{ fontWeight: 'bold' }}
