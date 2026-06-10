@@ -210,7 +210,7 @@ boolean reconnect() {
 // SETUP
 // ===========================
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   
   // Khởi tạo I2C và LCD
   Wire.begin(21, 22); // SDA=21, SCL=22

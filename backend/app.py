@@ -4,6 +4,7 @@ from flask_socketio import SocketIO
 from models import db
 from config import Config
 import os
+from sqlalchemy import text
 
 from extensions import socketio
 
@@ -15,6 +16,27 @@ db.init_app(app)
 
 # ── Socket.IO ──────────────────────────────────────────────────────────────
 socketio.init_app(app)
+
+
+def ensure_access_log_schema():
+    if db.engine.dialect.name != "sqlite":
+        return
+
+    existing = {
+        row[1]
+        for row in db.session.execute(text("PRAGMA table_info(access_logs)")).fetchall()
+    }
+    columns = {
+        "denied_reason": "VARCHAR(32)",
+        "antispoof_label": "VARCHAR(16)",
+        "antispoof_score": "FLOAT",
+        "antispoof_threshold": "FLOAT",
+        "antispoof_type": "VARCHAR(16)",
+    }
+    for name, column_type in columns.items():
+        if name not in existing:
+            db.session.execute(text(f"ALTER TABLE access_logs ADD COLUMN {name} {column_type}"))
+    db.session.commit()
 
 # ── MQTT ───────────────────────────────────────────────────────────────────
 from services.mqtt_service import start_mqtt
@@ -88,6 +110,7 @@ with app.app_context():
     os.makedirs(Config.CAPTURED_FACES_DIR, exist_ok=True)
     os.makedirs(Config.RECOG_IMAGES_DIR,   exist_ok=True)
     db.create_all()
+    ensure_access_log_schema()
     
     # Tự động tạo 4 thiết bị (đèn pk, đèn pn, quạt pk, quạt pn) nếu chưa có
     try:

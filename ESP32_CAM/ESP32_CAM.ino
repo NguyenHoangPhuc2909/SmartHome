@@ -17,7 +17,7 @@ const char *password = "urauraura";
 // Server and MQTT config
 const char* mqtt_server = "broker.hivemq.com";
 const int mqtt_port = 1883;
-const char* upload_url = "http://10.180.24.193:5000/api/access/recognize";
+const char* upload_url = "http://10.180.24.213:5000/api/access/recognize";
 const char* topic_capture = "myiot/home/commands/camera_capture";
 
 WiFiClient espClient;
@@ -86,7 +86,7 @@ void reconnect() {
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   Serial.setDebugOutput(true);
   Serial.println();
 

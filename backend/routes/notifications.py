@@ -3,6 +3,19 @@ from models import db, AccessLog, ActuatorLog
 
 notifications_bp = Blueprint("notifications", __name__)
 
+
+def _access_message(log):
+    if log.result != "DENIED":
+        name = log.matched_dataset.name if log.matched_dataset else "khong xac dinh"
+        return f"Nguoi dung {name} vua mo cua"
+    if log.denied_reason == "SPOOF":
+        return "Canh bao phat hien khuon mat gia mao"
+    if log.denied_reason == "NO_FACE":
+        return "Canh bao khong phat hien khuon mat hop le"
+    if log.denied_reason == "ANTISPOOF_UNCERTAIN":
+        return "Anh xac thuc chua du ro, vui long thu lai"
+    return "Canh bao nguoi la xam nhap"
+
 @notifications_bp.route("/", methods=["GET"])
 def get_notifications():
     limit = request.args.get("limit", 20, type=int)
@@ -19,7 +32,7 @@ def get_notifications():
             "id": f"access_{log.id}",
             "type": "access",
             "timestamp": log.timestamp.isoformat(),
-            "message": "Cảnh báo người lạ xâm nhập" if log.result == "DENIED" else f"Người dùng {log.matched_dataset.name if log.matched_dataset else 'không xác định'} vừa mở cửa",
+            "message": _access_message(log),
             "is_alert": log.is_alert,
             "raw_timestamp": log.timestamp
         })
