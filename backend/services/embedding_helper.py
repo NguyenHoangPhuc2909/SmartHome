@@ -6,64 +6,52 @@ from config import Config
 
 
 class EmbeddingModel:
-    _instance = None
-    _session = None
-    _input_name = None
-    _output_name = None
+    _instances = {}
 
     @staticmethod
-    def get_instance():
-        """Singleton pattern — load model chỉ 1 lần"""
-        if EmbeddingModel._instance is None:
-            EmbeddingModel._instance = EmbeddingModel()
-        return EmbeddingModel._instance
+    def get_instance(model_type="mobilefacenet"):
+        """Factory pattern — load model theo type (mobilefacenet hoặc resnet34)"""
+        if model_type not in EmbeddingModel._instances:
+            EmbeddingModel._instances[model_type] = EmbeddingModel(model_type)
+        return EmbeddingModel._instances[model_type]
 
-    def __init__(self):
-        """Load model ONNX (MobileFaceNet)"""
-        # Kiểm tra cả file .onnx (ưu tiên) và .h5 (fallback)
-        onnx_path = Config.FACE_MODEL_PATH.replace('.h5', '.onnx')
-        h5_path = Config.FACE_MODEL_PATH
+    def __init__(self, model_type="mobilefacenet"):
+        """Load model ONNX"""
+        self.model_type = model_type
         
-        if os.path.exists(onnx_path):
-            model_path = onnx_path
-            print(f"[INFO] Found ONNX model: {model_path}")
-        elif os.path.exists(h5_path):
-            model_path = h5_path
-            print(f"[INFO] Found H5 model: {model_path}")
-            # Nếu chỉ có H5, bạn cần chuyển đổi hoặc báo lỗi
-            raise FileNotFoundError(
-                f"Only H5 model found: {h5_path}\n"
-                f"Please convert to ONNX before using onnxruntime.\n"
-                f"Conversion: python -m tf2onnx.convert --keras {h5_path} --output {onnx_path}"
-            )
+        if model_type == "mobilefacenet":
+            model_path = Config.FACE_MODEL_PATH
+        elif model_type == "resnet34":
+            model_path = getattr(Config, "FACE_MODEL_RESNET34_PATH", None)
+            if not model_path:
+                raise ValueError("FACE_MODEL_RESNET34_PATH is not configured.")
         else:
-            raise FileNotFoundError(
-                f"Could not find ONNX or H5 model:\n"
-                f"  - ONNX: {onnx_path}\n"
-                f"  - H5: {h5_path}"
-            )
+            raise ValueError(f"Unknown model_type: {model_type}")
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"Could not find {model_type} model at: {model_path}")
         
         try:
-            print(f"[INFO] Loading model: {model_path}")
+            print(f"[INFO] Loading {model_type} model: {model_path}")
             
             # Tạo ONNX Runtime session
-            EmbeddingModel._session = ort.InferenceSession(
+            self._session = ort.InferenceSession(
                 model_path,
-                providers=['CPUExecutionProvider']  # Có thể thay bằng ['CUDAExecutionProvider'] nếu có GPU
+                providers=['CPUExecutionProvider']
             )
             
             # Lấy input và output names
-            EmbeddingModel._input_name = EmbeddingModel._session.get_inputs()[0].name
-            EmbeddingModel._output_name = EmbeddingModel._session.get_outputs()[0].name
+            self._input_name = self._session.get_inputs()[0].name
+            self._output_name = self._session.get_outputs()[0].name
             
             # In thông tin model
-            input_shape = EmbeddingModel._session.get_inputs()[0].shape
-            print(f"[INFO] Model input: {EmbeddingModel._input_name}, shape: {input_shape}")
-            print(f"[INFO] Model output: {EmbeddingModel._output_name}")
-            print("[INFO] Model loaded successfully with ONNX Runtime!")
+            input_shape = self._session.get_inputs()[0].shape
+            print(f"[INFO] {model_type} input: {self._input_name}, shape: {input_shape}")
+            print(f"[INFO] {model_type} output: {self._output_name}")
+            print(f"[INFO] {model_type} loaded successfully with ONNX Runtime!")
             
         except Exception as e:
-            print(f"[ERROR] Could not load model: {e}")
+            print(f"[ERROR] Could not load {model_type} model: {e}")
             raise
 
     def extract_embedding(self, face_image: np.ndarray, target_size: tuple = (112, 112)) -> np.ndarray:
@@ -86,22 +74,27 @@ class EmbeddingModel:
         # Resize về kích thước model (112x112)
         face_resized = cv2.resize(face_image, target_size)
         
-        # Normalize cho MobileFaceNet (quan trọng!): (x - 127.5) / 128.0
+        # Normalize cho MobileFaceNet/ResNet34: (x - 127.5) / 128.0
         face_normalized = (face_resized.astype('float32') - 127.5) / 128.0
         
-        # Chuyển đổi BGR sang RGB (nếu model yêu cầu)
-        # Một số model ONNX chuyển từ Keras cần input RGB
-        # Nếu model của bạn dùng BGR, hãy comment dòng này
+        # Chuyển đổi BGR sang RGB
         face_rgb = cv2.cvtColor(face_normalized, cv2.COLOR_BGR2RGB)
         
-        # Thêm batch dimension và chuyển sang NCHW nếu cần
-        # MobileFaceNet thường dùng NHWC (batch, height, width, channels)
+        # Thêm batch dimension
         face_batch = np.expand_dims(face_rgb, axis=0).astype(np.float32)
         
+        # Xử lý định dạng NCHW vs NHWC tùy thuộc vào model
+        if self.model_type == "resnet34":
+            # ResNet34 ONNX expects NCHW [1, 3, 112, 112]
+            face_batch = np.transpose(face_batch, (0, 3, 1, 2))
+        else:
+            # MobileFaceNet expects NHWC [1, 112, 112, 3]
+            pass
+            
         # Chạy inference với ONNX Runtime
-        embedding = EmbeddingModel._session.run(
-            [EmbeddingModel._output_name],
-            {EmbeddingModel._input_name: face_batch}
+        embedding = self._session.run(
+            [self._output_name],
+            {self._input_name: face_batch}
         )[0][0]  # Lấy batch đầu tiên
         
         # Normalize embedding (L2 normalization)

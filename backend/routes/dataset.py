@@ -5,7 +5,9 @@ import os, shutil
 import json
 import cv2
 import numpy as np
+from config import Config
 from services.embedding_helper import EmbeddingModel
+from services.face_preprocessing import detect_and_align_face
 
 cam = VideoCamera()
 dataset_bp = Blueprint("dataset", __name__)
@@ -19,6 +21,63 @@ def login_required(f):
             return jsonify({"error": "Unauthorized"}), 401
         return f(*args, **kwargs)
     return wrapper
+
+
+def _normalize_embedding(embedding):
+    embedding = np.asarray(embedding, dtype=np.float32)
+    return embedding / (np.linalg.norm(embedding) + 1e-8)
+
+
+def _extract_training_embedding(face_model, img):
+    if img is None:
+        return None
+
+    face_img = img
+    if img.shape[:2] != (112, 112):
+        aligned = detect_and_align_face(img, score_threshold=0.75, output_size=(112, 112))
+        if aligned is not None:
+            face_img = aligned
+
+    emb = face_model.extract_embedding(face_img)
+    if emb is None:
+        return None
+    return _normalize_embedding(emb)
+
+
+def _build_embedding_template(embeddings):
+    embeddings = np.asarray(embeddings, dtype=np.float32)
+    embeddings = embeddings / (np.linalg.norm(embeddings, axis=1, keepdims=True) + 1e-8)
+    all_embeddings = embeddings
+
+    centroid = _normalize_embedding(np.mean(embeddings, axis=0))
+    sims = embeddings @ centroid
+
+    if len(embeddings) >= 5:
+        cutoff = max(0.30, float(np.percentile(sims, 20)))
+        keep_mask = sims >= cutoff
+        if np.count_nonzero(keep_mask) >= 3:
+            embeddings = embeddings[keep_mask]
+            sims = sims[keep_mask]
+            centroid = _normalize_embedding(np.mean(embeddings, axis=0))
+            sims = embeddings @ centroid
+
+    sample_sims = all_embeddings @ centroid
+    order = np.argsort(sample_sims)[::-1]
+    max_samples = min(Config.FACE_TEMPLATE_MAX_SAMPLES, len(order))
+    selected = all_embeddings[order[:max_samples]]
+
+    return {
+        "version": 2,
+        "count": int(len(all_embeddings)),
+        "centroid_count": int(len(embeddings)),
+        "centroid": centroid.tolist(),
+        "samples": selected.tolist(),
+        "quality": {
+            "min_similarity": float(np.min(sims)),
+            "mean_similarity": float(np.mean(sims)),
+            "max_similarity": float(np.max(sims)),
+        },
+    }
 
 
 # ── Lấy danh sách dataset ──────────────────────────────────────────────────
@@ -114,9 +173,12 @@ def capture_stop():
     if user_name:
         ds = FaceDataset.query.filter_by(name=user_name, user_id=session["user_id"]).first()
         if ds:
-            face_model = EmbeddingModel.get_instance()
+            model_mobilefacenet = EmbeddingModel.get_instance("mobilefacenet")
+            model_resnet34 = EmbeddingModel.get_instance("resnet34")
             path = f"captured_faces/{ds.name}"
-            embeddings = []
+            
+            embeddings_mobilefacenet = []
+            embeddings_resnet34 = []
             
             # Quét ảnh vừa chụp
             if os.path.exists(path):
@@ -124,16 +186,24 @@ def capture_stop():
                     if fname.endswith(".jpg"):
                         fpath = os.path.join(path, fname)
                         img = cv2.imread(fpath)
-                        if img is not None:
-                            emb = face_model.extract_embedding(img)
-                            if emb is not None:
-                                embeddings.append(emb)
+                        
+                        emb_mf = _extract_training_embedding(model_mobilefacenet, img)
+                        if emb_mf is not None:
+                            embeddings_mobilefacenet.append(emb_mf)
+                            
+                        emb_rn = _extract_training_embedding(model_resnet34, img)
+                        if emb_rn is not None:
+                            embeddings_resnet34.append(emb_rn)
             
-            # Tính trung bình và lưu vào Database
-            if embeddings:
-                mean_emb = np.mean(embeddings, axis=0)
-                mean_emb = mean_emb / np.linalg.norm(mean_emb) # Chuẩn hoá
-                ds.embedding = json.dumps(mean_emb.tolist())   # Lưu dạng JSON string
+            has_embedding = False
+            if embeddings_mobilefacenet:
+                ds.embedding = json.dumps(_build_embedding_template(embeddings_mobilefacenet))
+                has_embedding = True
+            if embeddings_resnet34:
+                ds.embedding_resnet34 = json.dumps(_build_embedding_template(embeddings_resnet34))
+                has_embedding = True
+                
+            if has_embedding:
                 db.session.commit()
                 print(f"[INFO] Đã lưu embedding cho {ds.name} thành công!")
 

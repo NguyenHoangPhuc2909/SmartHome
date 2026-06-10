@@ -111,7 +111,7 @@ def send_to_server(img):
         name   = data.get('matched_name') or 'Người lạ'
         conf   = data.get('confidence', 0)
         icon   = "✅" if result == "GRANTED" else "❌"
-        print(f"<<< {icon} [{result}] Tên: {name} | Độ tin cậy: {conf:.2f}")
+        print(f"<<< {icon} [{result}] Tên: {name} | Độ tương đồng: {conf:.2f}")
     except Exception as e:
         print(f"<<< [LỖI] {e}")
 

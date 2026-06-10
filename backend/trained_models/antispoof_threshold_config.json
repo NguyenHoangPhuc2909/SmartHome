@@ -1,0 +1,23 @@
+{
+  "threshold_from_val": 0.875,
+  "threshold_policy": "target_apcer",
+  "target_apcer": 0.02,
+  "input": {
+    "image_size": 224,
+    "color": "RGB",
+    "range": "[0,255]",
+    "face_crop_scale": 1.45,
+    "note": "Model includes MobileNetV3 preprocessing. Feed RGB float/image resized to 224x224."
+  },
+  "class_map": {
+    "binary": {
+      "live": 0,
+      "spoof": 1
+    },
+    "type": {
+      "print": 0,
+      "replay": 1,
+      "live_ignore": -1
+    }
+  }
+}

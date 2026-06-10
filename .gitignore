@@ -8,6 +8,9 @@ frontend/dist/
 backend/.env
 backend/captured_faces/  
 backend/recog_images/    
+backend/antispoof_debug/
 *.sql
 *.db
 *.md
+*.onnx
+*.onnx.data
