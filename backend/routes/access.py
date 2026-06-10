@@ -71,7 +71,7 @@ def get_log_image(log_id):
 # ── Webhook từ ESP32-CAM ─────────────────────────────────────────────
 @access_bp.route("/recognize", methods=["POST"])
 def recognize():
-    filename   = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+    filename   = f"{datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
     image_path = os.path.join(Config.RECOG_IMAGES_DIR, filename)
     os.makedirs(Config.RECOG_IMAGES_DIR, exist_ok=True)
 
